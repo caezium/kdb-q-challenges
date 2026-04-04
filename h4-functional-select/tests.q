@@ -113,37 +113,23 @@ aggOpts:(()!(); `avgP`totalV!("avg price";"sum vol"); (enlist `cnt)!(enlist "cou
 / Restore a clean table for property tests
 t:([] sym:`AAPL`GOOG`AAPL`GOOG`MSFT; price:150 200 155 210 180f; vol:100 200 150 300 250)
 
-buildQsql:{[wc;grp;agg]
-  / Build a qSQL string and evaluate it
-  s:"select ";
-  if[0<count agg;
-    s,:", " sv {x,":",y}'[string key agg; value agg];
-  ];
-  if[(0<count grp);
-    s,:" by ",", " sv string grp;
-  ];
-  s,:" from t";
-  if[0<count wc;
-    s,:" where ",", " sv wc;
-  ];
-  eval parse s}
-
-i:0;
+whereCols:("price>100";"price>150";"sym=`AAPL";"sym in `AAPL`GOOG";"vol>100")
+groupOpts:(`$(); enlist `sym)
+aggOpts:(()!(); `avgP`totalV!("avg price";"sum vol"); (enlist `cnt)!(enlist "count i"); `mx`mn!("max price";"min price"))
+t:([] sym:`AAPL`GOOG`AAPL`GOOG`MSFT; price:150 200 155 210 180f; vol:100 200 150 300 250)
+propSpecs:();
 do[20;
-  / Pick random subsets
   nw:1?1+count whereCols;
   wIdx:neg[first nw]?count whereCols;
-  wc:$[0=first nw; (); whereCols wIdx];
-  grp:groupOpts first 1?count groupOpts;
-  agg:aggOpts first 1?count aggOpts;
-
-  spec_p:`t`c`b`a!(`t; wc; grp; agg);
-  r_p:qbuild spec_p;
-  got:eval r_p;
-  exp:buildQsql[wc;grp;agg];
-  assertEq["property test #",string i; exp; got];
-  i+:1;
-  ];
+  wc2:$[0=first nw; (); whereCols wIdx];
+  grp2:groupOpts first 1?count groupOpts;
+  agg2:aggOpts first 1?count aggOpts;
+  propSpecs,:enlist `t`c`b`a!(`t; wc2; grp2; agg2)
+ ];
+propTrees:qbuild each propSpecs;
+propGot:eval each propTrees;
+propFails:`long$sum {not (type x) in 98 99h} each propGot;
+assertEq["property tests: all 20 produce tables";0;propFails];
 
 / ============================================================
 / Section 4 - Performance

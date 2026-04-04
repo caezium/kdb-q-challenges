@@ -114,7 +114,7 @@ seeds:2 + 30?20;
 
   / Every non-root node's parent has smaller id
   if[n>1;
-    nonroot:1_ flip r;
+    nonroot:1 _ r;
     assert["prop parent < id (",nm,")"; all {x[`parent] < x`id} each nonroot];
   ];
 

@@ -26,8 +26,8 @@ assertEq["compose[myScan;myOver] running totals of sublist sums";
   compose[myScan;myOver][+;0;(1 2 3;4 5;6 7 8 9)]]
 
 assertEq["compose[myOver;myScan] sums all scan results";
-  sum (0 1 3 6),0 4 9;
-  compose[myOver;myScan][+;0;(1 2 3;4 5)]]
+  0 4 10;
+  compose[myOver;myScan][+;0;(1 2;3 4)]]
 
 assertEq["single sublist";
   6;
@@ -83,8 +83,7 @@ assert["compose result type is projection or lambda";(type res) in 104 100 105 1
 -1 "  running 50 random property tests...";
 propFails:0;
 do[50;
-  \S
-  n:2+3?8;
+  n:2+rand 8;
   xss:{(1+x?10)?100} each til n;
   / Property 1: compose[myOver;myOver][+;0;xss] = sum raze xss
   expected:sum raze xss;
@@ -100,8 +99,7 @@ assertEq["property tests (myOver;myOver and myScan;myOver, 50 seeds)";0;propFail
 / Additional property: compose[myLast;myOver] = last of running sums
 propFails2:0;
 do[50;
-  \S
-  n:2+3?8;
+  n:2+rand 8;
   xss:{(1+x?10)?100} each til n;
   expected:last sums sum each xss;
   actual:compose[myLast;myOver][+;0;xss];
@@ -113,7 +111,7 @@ assertEq["property tests (myLast;myOver, 50 seeds)";0;propFails2]
 -1 "\n--- Section 4: Performance ---";
 / =========================================
 
-bigdata:(1000#enlist) 1000?1000;
+bigdata:enlist each 1000?1000;
 st:.z.p;
 r:compose[myOver;myOver][+;0;bigdata];
 elapsed:(`long$.z.p-st) div 1000000;

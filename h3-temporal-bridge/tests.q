@@ -101,7 +101,7 @@ assertEq["result price matches trades";trades1`price;r1`price]
 -1 "  running 50 random property tests...";
 propFails:0;
 do[50;
-  \S
+  system "S";
   syms:3?`4;
   n:10+first 1?90;
   m:20+first 1?180;
@@ -140,7 +140,7 @@ assertEq["property tests (50 seeds: aj match, valid bids, count, cols)";0;propFa
 \S 99
 propFails2:0;
 do[20;
-  \S
+  system "S";
   syms:`A`B`C;
   n:50; m:50;
   tSym:n?syms;

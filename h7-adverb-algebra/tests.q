@@ -8,7 +8,7 @@ summary:{[] -1 "\n=== Results ==="; -1 "passed: ",string PASS; -1 "failed: ",str
 \l challenge.q
 
 / Incremental sum function used throughout tests
-fsum:{[prev;enter;exit] prev + enter - $[null exit;0;exit]}
+fsum:{[p;en;ex] p + en - $[null ex;0;ex]}
 
 / ============================================================
 / Section 1 - Basic Correctness
@@ -57,7 +57,7 @@ assertEq["w=4, longer seq"; 1 3 6 10 14 18 22 26; slideScan[fsum;4;1 2 3 4 5 6 7
 
 / Invocation counting: verify incremental (n calls, not n*w)
 CNT:0;
-fCounted:{[prev;enter;exit] CNT+:1; prev + enter - $[null exit;0;exit]};
+fCounted:{[p;en;ex] CNT+:1; p + en - $[null ex;0;ex]};
 slideScan[fCounted;10;til 1000];
 -1 "  invocation count: ",string[CNT]," (expect ~1000)";
 assert["incremental: n calls not n*w"; CNT < 1500];
@@ -65,7 +65,7 @@ assert["incremental: at least n calls"; CNT >= 999];
 
 / Invocation counting with larger window
 CNT2:0;
-fCounted2:{[prev;enter;exit] CNT2+:1; prev + enter - $[null exit;0;exit]};
+fCounted2:{[p;en;ex] CNT2+:1; p + en - $[null ex;0;ex]};
 slideScan[fCounted2;100;til 5000];
 -1 "  invocation count (w=100,n=5000): ",string[CNT2]," (expect ~5000)";
 assert["incremental large w: n calls not n*w"; CNT2 < 7500];
@@ -93,7 +93,7 @@ assert["result length = data length (10)"; 10 = count slideScan[fsum;2;til 10]];
 propPass:0; propTotal:0;
 seeds:42 + til 50;
 {[s]
-  \S s;
+  system "S ",string s;
   n:5 + s mod 100;
   w:1 + s mod 20;
   d:n ? 100;
@@ -114,18 +114,18 @@ seeds:42 + til 50;
   if[c1; propPass+:1];
   if[c2; propPass+:1];
   if[c3; propPass+:1];
- }[seeds];
+ } each seeds;
 
 -1 "  property tests: ",string[propPass]," / ",string[propTotal]," passed";
 assert["property tests all pass"; propPass = propTotal];
 
 / Additional property: window w=1 always returns the data itself (for sum)
-\S 200;
+\S 200
 dProp:50 ? 1000;
 assertEq["w=1 returns data"; dProp; slideScan[fsum;1;dProp]];
 
 / Additional property: w >= n gives cumulative sum
-\S 201;
+\S 201
 dProp2:20 ? 100;
 assertEq["w>=n gives cumsum"; sums dProp2; slideScan[fsum;1000;dProp2]];
 
@@ -148,15 +148,15 @@ assert["performance result length"; N = count rPerf];
 
 / Verify invocation count is ~n, not n*w
 CNTPERF:0;
-fCountPerf:{[prev;enter;exit] CNTPERF+:1; prev + enter - $[null exit;0;exit]};
+fCountPerf:{[p;en;ex] CNTPERF+:1; p + en - $[null ex;0;ex]};
 perfData:100000 ? 1000;
 slideScan[fCountPerf;100;perfData];
 -1 "  perf invocation count (n=100000,w=100): ",string[CNTPERF];
 assert["perf: invocation count ~n (within 2x)"; CNTPERF < 200000];
 assert["perf: invocation count >= n"; CNTPERF >= 99999];
 
-/ Verify correctness of performance run against msum
-assertEq["perf result matches msum"; 100 msum bigData; rPerf];
+/ Verify correctness of performance run against msum (approx for floats)
+assert["perf result matches msum"; 1e-4 > max abs (100 msum bigData) - rPerf];
 
 / ============================================================
 summary[]

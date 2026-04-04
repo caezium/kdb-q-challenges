@@ -19,7 +19,7 @@ scanz:{[f;init;data] ... }
 
 ```q
 / Running sum, stop when total >= 10
-scanz[{(x+y<10; x+y)}; 0; 1 2 3 4 5 6]
+scanz[{((x+y)<10; x+y)}; 0; 1 2 3 4 5 6]
 / => 0 1 3 6 10
 /    ^init   ^stopped here (6+4=10, 10<10 is 0b)
 ```

@@ -64,7 +64,7 @@ src:string vpart;
 assert["no each in source"; not any src ss "each"];
 / Use careful patterns to avoid false positives with "do" inside words
 / Check for " do[" or " do " which are the loop forms
-hasDo:(any src ss " do[") or (any src ss " do ") or (any src ss "\tdo[") or (any src ss "\tdo ");
+hasDo:(any src ss " do[[]") or (any src ss " do ") or (any src ss "\tdo[[]") or (any src ss "\tdo ");
 assert["no do loop in source"; not hasDo];
 assert["no while in source"; not any src ss "while"];
 
@@ -91,7 +91,7 @@ assert["keys are lists"; all 0h = type key ri];
 propPass:0; propTotal:0;
 seeds:42 + til 50;
 {[s]
-  \S s;
+  system "S ",string s;
   n:10 + s mod 50;
   syms:`a`b`c`d`e;
   k1:n ? syms;
@@ -110,25 +110,12 @@ seeds:42 + til 50;
   / Property 3: all values in result come from data (same multiset)
   c3:(asc allVals) ~ asc d;
 
-  / Property 4: each key maps to correct data elements
-  / For each group, verify the indices match
-  ks:key r;
-  vs:value r;
+  / Property 4: result matches group-based indexing
   idx:group flip (k1;k2);
-  c4:1b;
-  {[ks;vs;idx;d;i]
-    k:ks[i];
-    expected:d[idx[k]];
-    actual:vs[i];
-    if[not expected ~ actual; c4::0b];
-  }[ks;vs;idx;d;] peach til count ks;
+  c4:r ~ (key idx)!d idx key idx;
 
-  / Property 5: order preservation - indices for each group are ascending
-  c5:1b;
-  {[d;v]
-    positions:d ? v;
-    if[not positions ~ asc positions; c5::0b];
-  }[d;] peach value r;
+  / Property 5: result keys and group keys match in order
+  c5:(key r) ~ key idx;
 
   propTotal+:5;
   if[c1; propPass+:1];
@@ -136,7 +123,7 @@ seeds:42 + til 50;
   if[c3; propPass+:1];
   if[c4; propPass+:1];
   if[c5; propPass+:1];
- }[seeds];
+ } each seeds;
 
 assert["property tests pass rate"; propPass = propTotal];
 
@@ -144,28 +131,22 @@ assert["property tests pass rate"; propPass = propTotal];
 -1 "  Running targeted property checks...";
 
 / For single key, verify against built-in group
-\S 99;
+\S 99
 n2:100;
 k:n2 ? `a`b`c`d;
 d2:n2 ? 1000;
 rSingle:vpart[enlist k; d2];
 gBuiltin:group k;
 / Check that the grouping structure matches
-builtinKeys:key gBuiltin;
-ok:1b;
-{[rSingle;d2;gBuiltin;bk]
-  expected:d2[gBuiltin[bk]];
-  actual:rSingle[enlist bk];
-  if[not expected ~ actual; ok::0b];
- }[rSingle;d2;gBuiltin;] peach builtinKeys;
-assert["single key matches group builtin"; ok];
+expected:(enlist each key gBuiltin)!d2 value gBuiltin;
+assert["single key matches group builtin"; expected ~ rSingle];
 
 / ============================================================
 / Section 4 - Performance
 / ============================================================
 -1 "\n--- Section 4: Performance ---";
 
-\S 123;
+\S 123
 N:1000000;
 bigK1:N ? `sym1`sym2`sym3`sym4`sym5`sym6`sym7`sym8`sym9`sym10;
 bigK2:N ? til 10;

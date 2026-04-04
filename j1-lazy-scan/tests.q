@@ -19,7 +19,7 @@ summary:{[] -1 "\n=== Results ==="; -1 "passed: ",string PASS; -1 "failed: ",str
 / running sum, stop at >= 10
 assertEq["running sum stops at 10";
   0 1 3 6 10;
-  scanz[{(x+y<10;x+y)};0;1 2 3 4 5 6]]
+  scanz[{((x+y)<10;x+y)};0;1 2 3 4 5 6]]
 
 / empty input
 assertEq["empty input";
@@ -48,13 +48,13 @@ assertEq["stops on first";
 
 / float accumulator
 assertEq["float accumulator";
-  0.0 1.5 4.0;
-  scanz[{(x+y<10;x+y)};0.0;1.5 2.5 100.0 200.0]]
+  0.0 1.5 4.0 104.0;
+  scanz[{((x+y)<10;x+y)};0.0;1.5 2.5 100.0 200.0]]
 
-/ symbol accumulator (concatenation via ,)
+/ symbol accumulator — track state as symbol, stop when reaching target
 assertEq["symbol accumulator";
-  (``;`a;`ab);
-  scanz[{v:`$(string x),string y; ((count string v)<4; v)};``;`a`b`c`d`e]]
+  `start`a`b`c;
+  scanz[{$[y=`c;(0b;y);(1b;y)]};`start;`a`b`c`d`e]]
 
 / ============================================================
 / Section 2: Anti-Cheat
@@ -62,14 +62,14 @@ assertEq["symbol accumulator";
 -1 "\n--- anti-cheat ---";
 
 / anti-identity: result must not be the input
-r1:scanz[{(x+y<10;x+y)};0;1 2 3 4 5 6];
+r1:scanz[{((x+y)<10;x+y)};0;1 2 3 4 5 6];
 assert["not identity 1"; not r1~(1 2 3 4 5 6)]
 assert["not identity 2"; not r1~0]
 
 / anti-constant: different inputs must give different outputs
-r2:scanz[{(x+y<100;x+y)};0;1 2 3];
-r3:scanz[{(x+y<100;x+y)};0;10 20 30];
-r4:scanz[{(x+y<100;x+y)};0;50 60 70];
+r2:scanz[{((x+y)<100;x+y)};0;1 2 3];
+r3:scanz[{((x+y)<100;x+y)};0;10 20 30];
+r4:scanz[{((x+y)<100;x+y)};0;50 60 70];
 assert["not constant"; 3=count distinct (r2;r3;r4)]
 
 / output always starts with init
@@ -89,7 +89,7 @@ assert["float type"; 9h=type scanz[{(1b;x+y)};0.0;1.0 2.0 3.0]]
 {[seed]
   system "S ",string seed;
   data:10+10?90;
-  r:scanz[{(x+y<500;x+y)};0;data];
+  r:scanz[{((x+y)<500;x+y)};0;data];
   assert["len <= 1+n (seed ",string[seed],")"; (count r)<= 1+count data]
  } each 100?1000;
 
@@ -115,7 +115,7 @@ assert["float type"; 9h=type scanz[{(1b;x+y)};0.0;1.0 2.0 3.0]]
   system "S ",string seed;
   data:5+5?50;
   threshold:50+seed mod 200;
-  f:{[t;a;e] (a+e<t; a+e)}[threshold];
+  f:{[t;a;e] ((a+e)<t; a+e)}[threshold];
   r:scanz[f;0;data];
   $[(count r)<1+count data;
     / stopped early — last val must have crossed threshold
@@ -133,7 +133,7 @@ assert["float type"; 9h=type scanz[{(1b;x+y)};0.0;1.0 2.0 3.0]]
 / 10M elements, stops at element 3 — must be fast
 bigdata:10000000?100;
 t0:.z.P;
-r:scanz[{(x+y<50;x+y)};0;bigdata];
+r:scanz[{((x+y)<50;x+y)};0;bigdata];
 elapsed:(`long$.z.P-t0) div 1000000;  / ms
 -1 "  big list early stop: ",string[elapsed],"ms, result length: ",string count r;
 assert["early stop is fast (<500ms)"; elapsed<500]
