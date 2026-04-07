@@ -1,9 +1,12 @@
 """Evaluate LLM-generated solutions against challenge test suites using PyKX."""
 
+from __future__ import annotations
+
 import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional
 
 
 def extract_q_code(llm_response: str) -> str:
@@ -69,7 +72,7 @@ def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
         challenge_file.write_text(original)
 
 
-def _evaluate_via_pykx(tests_file: Path) -> dict | None:
+def _evaluate_via_pykx(tests_file: Path) -> Optional[dict]:
     """Try to evaluate using PyKX. Returns None if PyKX unavailable."""
     try:
         import pykx as kx
@@ -78,21 +81,34 @@ def _evaluate_via_pykx(tests_file: Path) -> dict | None:
 
     start = time.time()
     try:
-        # Run tests in a fresh q context
-        kx.q("\\l " + str(tests_file))
+        import io
+        import sys
+
+        # Capture stdout to get test output for section parsing
+        old_stdout = sys.stdout
+        sys.stdout = captured = io.StringIO()
+        try:
+            kx.q("\\l " + str(tests_file))
+        finally:
+            sys.stdout = old_stdout
+        raw_output = captured.getvalue()
         elapsed = int((time.time() - start) * 1000)
+        sections = parse_sections(raw_output)
+        total = sum(s["passed"] + s["failed"] for s in sections.values())
+        passed = sum(s["passed"] for s in sections.values())
         return {
             "status": "pass",
-            "score": "all",
-            "total": "all",
+            "score": passed if total > 0 else "all",
+            "total": total if total > 0 else "all",
             "errors": [],
             "elapsed_ms": elapsed,
-            "raw_output": "PyKX evaluation passed",
+            "raw_output": raw_output,
+            "sections": sections,
         }
     except Exception as e:
         elapsed = int((time.time() - start) * 1000)
         error_str = str(e)
-        # Parse pass/fail from error output if available
+        sections = parse_sections(error_str)
         return {
             "status": "fail",
             "score": _extract_score(error_str),
@@ -100,6 +116,7 @@ def _evaluate_via_pykx(tests_file: Path) -> dict | None:
             "errors": [error_str],
             "elapsed_ms": elapsed,
             "raw_output": error_str,
+            "sections": sections,
         }
 
 
@@ -118,6 +135,7 @@ def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
 
         output = result.stdout + result.stderr
         passed = result.returncode == 0
+        sections = parse_sections(output)
 
         return {
             "status": "pass" if passed else "fail",
@@ -126,6 +144,7 @@ def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
             "errors": [output] if not passed else [],
             "elapsed_ms": elapsed,
             "raw_output": output,
+            "sections": sections,
         }
     except subprocess.TimeoutExpired:
         elapsed = int((time.time() - start) * 1000)
@@ -136,6 +155,7 @@ def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
             "errors": ["Execution timed out after 120s"],
             "elapsed_ms": elapsed,
             "raw_output": "",
+            "sections": {},
         }
     except FileNotFoundError:
         return {
@@ -145,6 +165,7 @@ def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
             "errors": ["q executable not found. Install kdb+ and ensure q is on PATH."],
             "elapsed_ms": 0,
             "raw_output": "",
+            "sections": {},
         }
 
 
@@ -186,6 +207,7 @@ def evaluate_pykx_challenge(challenge_dir: Path, solution_code: str) -> dict:
             "errors": [output] if not passed else [],
             "elapsed_ms": elapsed,
             "raw_output": output,
+            "sections": {},  # pytest doesn't use our section format
         }
     except subprocess.TimeoutExpired:
         return {
@@ -195,9 +217,49 @@ def evaluate_pykx_challenge(challenge_dir: Path, solution_code: str) -> dict:
             "errors": ["Execution timed out after 120s"],
             "elapsed_ms": int((time.time() - start) * 1000),
             "raw_output": "",
+            "sections": {},
         }
     finally:
         challenge_file.write_text(original)
+
+
+def parse_sections(output: str) -> dict:
+    """Parse test output into per-section pass/fail counts.
+
+    Handles both formats:
+      --- Section 1: Basic Correctness ---
+      --- basic correctness ---
+
+    Returns:
+        Dict mapping section name -> {"passed": int, "failed": int}
+    """
+    sections = {}
+    current_section = None
+
+    for line in output.splitlines():
+        stripped = line.strip()
+
+        # Detect section headers
+        sec_match = re.match(
+            r"---\s*(?:Section\s*\d+:\s*)?(.+?)\s*---", stripped
+        )
+        if sec_match:
+            # Normalize: lowercase, underscores
+            name = sec_match.group(1).strip().lower().replace(" ", "_")
+            current_section = name
+            sections[current_section] = {"passed": 0, "failed": 0}
+            continue
+
+        if current_section is None:
+            continue
+
+        # Count pass/fail lines
+        if re.match(r"pass:", stripped):
+            sections[current_section]["passed"] += 1
+        elif re.match(r"FAIL:", stripped):
+            sections[current_section]["failed"] += 1
+
+    return sections
 
 
 def _extract_score(output: str) -> int:

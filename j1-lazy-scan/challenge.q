@@ -1,12 +1,10 @@
-scanz:{[f;init;data]
-  n:count data;
-  if[n=0; :enlist init];
-  .scanz.r:1#init;
-  st:{[f;data;n;st]
-    r:f[st 0;data st 1];
-    .scanz.r,:r 1;
-    (r 1;1+st 1;0<>r 0)
-  }[f;data;n]/[{[n;st] st[2] and (st 1)<n}[n];(init;0;1b)];
-  r:.scanz.r;
-  delete r from `.scanz;
-  r}
+/ j1-lazy-scan
+/ Implement scanz: a scan that supports early termination.
+/ .
+/ scanz[f;init;data]
+/   f: binary f[acc;elem] -> (continue;newValue)
+/   init: initial accumulator
+/   data: list to scan
+/   Returns: list of accumulator values from init up to first stop.
+
+scanz:{[f;init;data] 'nyi}

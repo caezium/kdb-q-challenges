@@ -280,20 +280,24 @@ You need at least one of these working. For PyKX challenges (p series), PyKX is 
 Run from the project root:
 
 ```bash
-# Single model, all q challenges
+# Single model, all q challenges (zero-shot, 1 attempt)
 python -m runner.runner --models claude-sonnet-4-6 --challenges all
 
-# Compare multiple models
-python -m runner.runner --models claude-sonnet-4-6,gpt-4o,o3 --challenges all
+# Compare multiple models with chain-of-thought prompting
+python -m runner.runner --models claude-sonnet-4-6,gpt-4o,o3 --challenges all --strategy cot
+
+# Multi-attempt with error feedback (agentic mode)
+python -m runner.runner --models claude-sonnet-4-6 --challenges all --attempts 3
 
 # Include PyKX challenges
 python -m runner.runner --models claude-sonnet-4-6,gpt-4o --challenges all --include-pykx
 
-# Specific challenges only
-python -m runner.runner --models claude-sonnet-4-6 --challenges j1-lazy-scan,h5-tree-unfold
+# Few-shot prompting with 5 retries, compare against a previous run
+python -m runner.runner --models gpt-4.1 --challenges all \
+  --strategy few-shot --attempts 5 --compare ./results/results_20260403_120000.json
 
-# Custom output directory
-python -m runner.runner --models gpt-4.1 --challenges all --output ./my-results
+# Skip artifact saving for quick runs
+python -m runner.runner --models claude-sonnet-4-6 --challenges j1-lazy-scan --no-artifacts
 ```
 
 **CLI flags:**
@@ -303,60 +307,91 @@ python -m runner.runner --models gpt-4.1 --challenges all --output ./my-results
 | `--models` | `claude-sonnet-4-6` | Comma-separated model keys (see table below) |
 | `--challenges` | `all` | Comma-separated challenge names, or `all` for all q challenges |
 | `--include-pykx` | off | Also run PyKX challenges (p series) |
-| `--output` | `./results` | Directory for JSON/CSV output |
+| `--attempts` | `1` | Max attempts per challenge (1–5). On failure, error output is fed back to the model. |
+| `--strategy` | `zero-shot` | Prompting strategy: `zero-shot`, `cot` (chain-of-thought), or `few-shot` |
+| `--output` | `./results` | Directory for JSON/CSV/report output |
+| `--no-artifacts` | off | Skip saving raw LLM responses and extracted code |
+| `--compare` | none | Path to a previous results JSON for delta comparison in the report |
+
+### Prompt Strategies
+
+| Strategy | Behavior |
+|----------|----------|
+| `zero-shot` | "Pure code only" — the model gets the README + stub and must output just code |
+| `cot` | Chain-of-thought — the model is asked to reason about q semantics step by step, then output code in a fenced block |
+| `few-shot` | Includes a small solved example (not from the benchmark) to demonstrate expected format |
+
+### Multi-Attempt Mode
+
+When `--attempts N` is set (N > 1), the runner retries on failure:
+
+1. **Attempt 1:** Standard prompt (README + stub)
+2. **Attempt 2+:** The model sees its previous code and the test error output, and is asked to fix it
+
+This simulates agentic coding workflows (Claude Code, Cursor, etc.) and measures "attempts to pass."
+
+The runner tracks both **first-shot pass rate** and **best-of-N pass rate**, plus the standard **Pass@k** metric from the Codex/HumanEval paper.
 
 ### Output Format
 
-Each run produces two files in the output directory:
+Each run produces three files in the output directory:
 
-**`results_YYYYMMDD_HHMMSS.json`** — full structured results:
+**`results_YYYYMMDD_HHMMSS.json`** — full structured results with section-level scoring:
 ```json
 {
   "generated_at": "2026-04-03T12:00:00+00:00",
+  "run_config": {
+    "strategy": "cot",
+    "max_attempts": 3,
+    "git_commit": "abc12345",
+    "q_version": "4.1"
+  },
   "models": [
     {
       "model": "claude-sonnet-4-6",
-      "total_challenges": 7,
-      "passed": 5,
-      "failed": 2,
       "pass_rate": 0.714,
-      "avg_elapsed_ms": 3200,
+      "first_shot_pass_rate": 0.571,
+      "pass@1": 0.571,
+      "pass@3": 0.714,
+      "avg_attempts": 1.8,
       "challenges": [
-        {"id": "j1-lazy-scan", "type": "q", "status": "pass", "score": 38, "total": 38, "elapsed_ms": 2100},
-        {"id": "h2-custom-adverb", "type": "q", "status": "fail", "score": 12, "total": 20, "elapsed_ms": 4500}
+        {
+          "id": "j1-lazy-scan",
+          "status": "pass",
+          "attempts_used": 2,
+          "first_shot_pass": false,
+          "sections": {
+            "basic_correctness": {"passed": 10, "failed": 0},
+            "anti-cheat": {"passed": 5, "failed": 0},
+            "property_tests": {"passed": 20, "failed": 0},
+            "performance": {"passed": 3, "failed": 0}
+          },
+          "prompt_hash": "a1b2c3d4"
+        }
       ]
     }
   ]
 }
 ```
 
-**`results_YYYYMMDD_HHMMSS.csv`** — flat table for quick analysis:
+**`results_YYYYMMDD_HHMMSS.csv`** — flat table with section columns:
 ```
-model,challenge,type,status,score,total,elapsed_ms
-claude-sonnet-4-6,j1-lazy-scan,q,pass,38,38,2100
-claude-sonnet-4-6,h2-custom-adverb,q,fail,12,20,4500
+model,challenge,status,attempts_used,first_shot_pass,sec_basic_correctness_passed,...
 ```
 
-**Stdout leaderboard** — printed after each run:
-```
-============================================================
-kdb-q-challenges Leaderboard
-============================================================
+**`REPORT_YYYYMMDD_HHMMSS.md`** — human-readable markdown report with:
+- Run configuration table
+- Leaderboard with first-shot and best-of-N rates
+- Pass@k table (when attempts > 1)
+- Per-challenge status grid
+- Section-level heatmap per model
+- Delta comparison vs. previous run (if `--compare` used)
 
-Rank  Model                         Pass Rate   Passed    Avg ms
-------------------------------------------------------------
-1     claude-sonnet-4-6             71%         5/7       3200
-2     gpt-4o                        57%         4/7       4100
-
-Per-Challenge Breakdown:
-------------------------------------------------------------
-Challenge                claude-sonnet-4 gpt-4o
-------------------------------------------------------------
-j1-lazy-scan             PASS             PASS
-h2-custom-adverb         FAIL             FAIL
-h3-temporal-bridge       PASS             PASS
-...
-```
+**Artifacts** (in `results/artifacts/<model>/<challenge>/`):
+- `response.txt` — raw LLM response
+- `code.q` — extracted q code
+- `test_output.txt` — test suite output
+- Suffixed `_attempt2`, `_attempt3` etc. for retries
 
 ### Supported Models
 
@@ -428,12 +463,14 @@ kdb-q-challenges/
 ├── p3-pykx-hybrid/
 │   └── ...
 │
+├── Dockerfile                   # Sandboxed execution (optional)
+│
 ├── runner/                      # LLM benchmark automation
 │   ├── requirements.txt         #   pykx, anthropic, openai, pandas
-│   ├── runner.py                #   CLI entry point
-│   ├── evaluator.py             #   Test execution (PyKX or subprocess)
-│   ├── prompt.py                #   Prompt construction
-│   └── results.py               #   JSON/CSV output + leaderboard
+│   ├── runner.py                #   CLI entry point + retry loop
+│   ├── evaluator.py             #   Test execution + section parsing
+│   ├── prompt.py                #   Prompt strategies (zero-shot/cot/few-shot)
+│   └── results.py               #   Pass@k, artifacts, markdown reports
 │
 └── results/                     # Benchmark output (gitignored)
     └── .gitkeep
@@ -445,6 +482,23 @@ kdb-q-challenges/
 - `p1`–`p3` — PyKX (Python↔q bridge) challenges
 
 Each q challenge is fully standalone — no shared files, no imports between challenges. The test harness (~6 lines) is copied into each `tests.q`.
+
+---
+
+### Docker (Optional)
+
+For sandboxed execution (recommended when running untrusted LLM-generated code):
+
+```bash
+# Place your kc.lic in the project root, then:
+docker build -t kdb-q-challenges .
+
+docker run --rm \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -v $(pwd)/results:/app/results \
+  kdb-q-challenges \
+  --models claude-sonnet-4-6 --challenges all --attempts 3
+```
 
 ---
 

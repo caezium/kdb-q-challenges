@@ -8,4 +8,4 @@
 / .
 / CONSTRAINT: No each, do, or while. Fully vectorized.
 
-vpart:{[ks;data] g:group flip ks; (key g)!data value g}
+vpart:{[ks;data] 'nyi}
