@@ -11,6 +11,8 @@ from typing import Optional
 
 def extract_q_code(llm_response: str) -> str:
     """Extract q code from an LLM response, stripping markdown fences."""
+    if not llm_response:
+        return ""
     # Try to extract from code fences first
     fence_match = re.search(r"```(?:q|kdb)?\s*\n(.*?)```", llm_response, re.DOTALL)
     if fence_match:
@@ -29,6 +31,8 @@ def extract_q_code(llm_response: str) -> str:
 
 def extract_python_code(llm_response: str) -> str:
     """Extract Python code from an LLM response."""
+    if not llm_response:
+        return ""
     fence_match = re.search(
         r"```(?:python|py)?\s*\n(.*?)```", llm_response, re.DOTALL
     )
@@ -59,12 +63,12 @@ def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
         # Write solution
         challenge_file.write_text(solution_code)
 
-        # Try PyKX evaluation first
-        result = _evaluate_via_pykx(tests_file)
+        # Try PyKX's bundled q first
+        result = _evaluate_via_pykx(tests_file, challenge_dir)
         if result is not None:
             return result
 
-        # Fall back to subprocess
+        # Fall back to system q
         return _evaluate_via_subprocess(tests_file, challenge_dir)
 
     finally:
@@ -72,64 +76,87 @@ def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
         challenge_file.write_text(original)
 
 
-def _evaluate_via_pykx(tests_file: Path) -> Optional[dict]:
-    """Try to evaluate using PyKX. Returns None if PyKX unavailable."""
-    try:
-        import pykx as kx
-    except ImportError:
+def _evaluate_via_pykx(tests_file: Path, challenge_dir: Path) -> Optional[dict]:
+    """Try to evaluate using PyKX in a subprocess Python process.
+
+    Spawns a fresh Python process that imports pykx, loads the tests,
+    and captures all output. This avoids the `exit` issue (tests.q calls exit)
+    and ensures proper CWD handling.
+
+    IMPORTANT: We do NOT import pykx in the parent process — doing so would
+    start an embedded q instance that conflicts with the subprocess child
+    (causes SIGSEGV). Instead we check if pykx is importable by looking
+    for the package without importing it.
+
+    Returns None if pykx package is not installed.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("pykx") is None:
         return None
 
-    start = time.time()
-    try:
-        import io
-        import sys
+    import sys
 
-        # Capture stdout to get test output for section parsing
-        old_stdout = sys.stdout
-        sys.stdout = captured = io.StringIO()
-        try:
-            kx.q("\\l " + str(tests_file))
-        finally:
-            sys.stdout = old_stdout
-        raw_output = captured.getvalue()
-        elapsed = int((time.time() - start) * 1000)
-        sections = parse_sections(raw_output)
-        total = sum(s["passed"] + s["failed"] for s in sections.values())
-        passed = sum(s["passed"] for s in sections.values())
-        return {
-            "status": "pass",
-            "score": passed if total > 0 else "all",
-            "total": total if total > 0 else "all",
-            "errors": [],
-            "elapsed_ms": elapsed,
-            "raw_output": raw_output,
-            "sections": sections,
-        }
-    except Exception as e:
-        elapsed = int((time.time() - start) * 1000)
-        error_str = str(e)
-        sections = parse_sections(error_str)
-        return {
-            "status": "fail",
-            "score": _extract_score(error_str),
-            "total": _extract_total(error_str),
-            "errors": [error_str],
-            "elapsed_ms": elapsed,
-            "raw_output": error_str,
-            "sections": sections,
-        }
-
-
-def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
-    """Evaluate by running q as a subprocess."""
+    helper_script = Path(__file__).parent / "_eval_helper.py"
     start = time.time()
     try:
         result = subprocess.run(
-            ["q", str(tests_file)],
+            [sys.executable, str(helper_script), str(challenge_dir.resolve())],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        elapsed = int((time.time() - start) * 1000)
+
+        output = result.stdout + result.stderr
+        sections = parse_sections(output)
+        score = _extract_score(output)
+        total = _extract_total(output)
+        failed = total - score
+        passed_all = result.returncode == 0 and failed == 0 and total > 0
+
+        return {
+            "status": "pass" if passed_all else "fail",
+            "score": score,
+            "total": total,
+            "errors": [output] if not passed_all else [],
+            "elapsed_ms": elapsed,
+            "raw_output": output,
+            "sections": sections,
+        }
+    except subprocess.TimeoutExpired:
+        elapsed = int((time.time() - start) * 1000)
+        return {
+            "status": "timeout",
+            "score": 0,
+            "total": 0,
+            "errors": ["PyKX evaluation timed out after 120s"],
+            "elapsed_ms": elapsed,
+            "raw_output": "",
+            "sections": {},
+        }
+
+
+def _evaluate_via_subprocess_with_q(
+    q_bin: str, tests_file: Path, challenge_dir: Path
+) -> dict:
+    """Evaluate by running a specific q binary as a subprocess."""
+    import os
+
+    env = os.environ.copy()
+    # Ensure QHOME and QLIC are set for the subprocess
+    if "QHOME" not in env:
+        env["QHOME"] = str(Path(q_bin).parent.parent)
+
+    start = time.time()
+    try:
+        result = subprocess.run(
+            [q_bin, str(tests_file.name)],
             capture_output=True,
             text=True,
             timeout=120,
             cwd=str(challenge_dir),
+            env=env,
         )
         elapsed = int((time.time() - start) * 1000)
 
@@ -162,11 +189,16 @@ def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
             "status": "error",
             "score": 0,
             "total": 0,
-            "errors": ["q executable not found. Install kdb+ and ensure q is on PATH."],
+            "errors": [f"q binary not found at {q_bin}"],
             "elapsed_ms": 0,
             "raw_output": "",
             "sections": {},
         }
+
+
+def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
+    """Evaluate by running system q as a subprocess."""
+    return _evaluate_via_subprocess_with_q("q", tests_file, challenge_dir)
 
 
 def evaluate_pykx_challenge(challenge_dir: Path, solution_code: str) -> dict:

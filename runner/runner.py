@@ -57,6 +57,7 @@ PYKX_CHALLENGES = sorted(
 
 # Model configurations
 MODELS = {
+    # Direct API providers
     "claude-sonnet-4-6": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
     "claude-opus-4-6": {"provider": "anthropic", "model": "claude-opus-4-6"},
     "claude-haiku-4-5": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
@@ -65,6 +66,13 @@ MODELS = {
     "gpt-4.1-mini": {"provider": "openai", "model": "gpt-4.1-mini"},
     "o3": {"provider": "openai", "model": "o3"},
     "o4-mini": {"provider": "openai", "model": "o4-mini"},
+    # OpenRouter models
+    "or-opus-4.6": {"provider": "openrouter", "model": "anthropic/claude-opus-4.6"},
+    "or-sonnet-4.6": {"provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
+    "or-gpt-5.4": {"provider": "openrouter", "model": "openai/gpt-5.4"},
+    "or-kimi-k2.5": {"provider": "openrouter", "model": "moonshotai/kimi-k2.5"},
+    "or-gemini-3.1-pro": {"provider": "openrouter", "model": "google/gemini-3.1-pro-preview"},
+    "or-gemini-3.1-flash": {"provider": "openrouter", "model": "google/gemini-3.1-flash-lite-preview"},
 }
 
 
@@ -81,6 +89,8 @@ def call_llm(model_key: str, prompt: dict) -> str:
         return _call_anthropic(model, prompt)
     elif provider == "openai":
         return _call_openai(model, prompt)
+    elif provider == "openrouter":
+        return _call_openrouter(model, prompt)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -127,6 +137,33 @@ def _call_openai(model: str, prompt: dict) -> str:
         messages=messages,
     )
     return response.choices[0].message.content
+
+
+def _call_openrouter(model: str, prompt: dict) -> str:
+    """Call OpenRouter API (OpenAI-compatible with different base URL)."""
+    import openai
+
+    client = openai.OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+    )
+
+    if "messages" in prompt:
+        messages = [{"role": "system", "content": prompt["system"]}] + prompt[
+            "messages"
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": prompt["system"]},
+            {"role": "user", "content": prompt["user"]},
+        ]
+
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=4096,
+        messages=messages,
+    )
+    return response.choices[0].message.content or ""
 
 
 def _get_run_metadata(model_keys: list, strategy: str, max_attempts: int) -> dict:
@@ -375,6 +412,9 @@ def main():
             sys.exit(1)
         if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
             print("OPENAI_API_KEY not set")
+            sys.exit(1)
+        if provider == "openrouter" and not os.environ.get("OPENROUTER_API_KEY"):
+            print("OPENROUTER_API_KEY not set")
             sys.exit(1)
 
     output_dir = Path(args.output)
