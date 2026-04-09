@@ -377,6 +377,11 @@ def main():
         help="Don't save raw responses and code artifacts",
     )
     parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Run models in parallel (faster, but interleaved output)",
+    )
+    parser.add_argument(
         "--compare",
         type=str,
         default=None,
@@ -430,9 +435,10 @@ def main():
     # Collect metadata
     run_meta = _get_run_metadata(model_keys, args.strategy, args.attempts)
 
-    # Run all combinations
-    all_results = []
-    for model_key in model_keys:
+    # Run all combinations — models in parallel, challenges sequential per model
+    def _run_model(model_key):
+        """Run all challenges for a single model sequentially."""
+        results = []
         print(f"\n=== {model_key} ===")
         for challenge in challenges:
             result = run_challenge(
@@ -442,7 +448,27 @@ def main():
                 max_attempts=args.attempts,
                 output_dir=artifact_dir,
             )
-            all_results.append(result)
+            results.append(result)
+        return results
+
+    all_results = []
+    if args.parallel and len(model_keys) > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        print(f"[parallel mode: {len(model_keys)} models concurrently]")
+        with ThreadPoolExecutor(max_workers=len(model_keys)) as pool:
+            futures = {
+                pool.submit(_run_model, mk): mk for mk in model_keys
+            }
+            for future in as_completed(futures):
+                mk = futures[future]
+                try:
+                    all_results.extend(future.result())
+                except Exception as e:
+                    print(f"\nERROR running {mk}: {e}")
+    else:
+        for model_key in model_keys:
+            all_results.extend(_run_model(model_key))
 
     # Aggregate and save
     summary = aggregate_results(all_results, run_meta)

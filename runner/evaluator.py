@@ -44,7 +44,10 @@ def extract_python_code(llm_response: str) -> str:
 def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
     """Evaluate a pure q solution by writing it and running tests.
 
-    Tries PyKX first (import pykx), falls back to subprocess q.
+    Copies the challenge dir to a temp directory so multiple models can
+    evaluate the same challenge concurrently without file conflicts.
+
+    Tries PyKX's bundled q first, falls back to system q.
 
     Args:
         challenge_dir: Path to the challenge directory.
@@ -53,100 +56,97 @@ def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
     Returns:
         Dict with keys: status, score, total, errors, elapsed_ms, raw_output.
     """
-    challenge_file = challenge_dir / "challenge.q"
-    tests_file = challenge_dir / "tests.q"
+    import shutil
+    import tempfile
 
-    # Back up original stub
-    original = challenge_file.read_text()
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp) / challenge_dir.name
+        shutil.copytree(challenge_dir, tmp_dir)
 
-    try:
-        # Write solution
-        challenge_file.write_text(solution_code)
+        # Write solution into the temp copy
+        (tmp_dir / "challenge.q").write_text(solution_code)
+        tests_file = tmp_dir / "tests.q"
 
         # Try PyKX's bundled q first
-        result = _evaluate_via_pykx(tests_file, challenge_dir)
+        result = _evaluate_via_pykx(tests_file, tmp_dir)
         if result is not None:
             return result
 
         # Fall back to system q
-        return _evaluate_via_subprocess(tests_file, challenge_dir)
+        return _evaluate_via_subprocess(tests_file, tmp_dir)
 
-    finally:
-        # Restore original stub
-        challenge_file.write_text(original)
+
+def _find_q_binary() -> Optional[tuple]:
+    """Find a working q binary, trying multiple sources.
+
+    Returns (q_binary_path, env_dict) or None if no q found.
+    Priority:
+      1. User's q from ~/q (common personal edition location)
+      2. q on PATH
+      3. PyKX's bundled q binary
+    """
+    import importlib.util
+    import os
+    import shutil
+
+    # 1. User's q at ~/q
+    home_q = Path.home() / "q"
+    for arch in ["m64", "l64", "m32", "l32"]:
+        candidate = home_q / arch / "q"
+        if candidate.exists():
+            env = os.environ.copy()
+            env["QHOME"] = str(home_q)
+            return (str(candidate), env)
+
+    # 2. q on PATH
+    q_on_path = shutil.which("q")
+    if q_on_path:
+        return (q_on_path, None)  # None = use default env
+
+    # 3. PyKX's bundled q
+    spec = importlib.util.find_spec("pykx")
+    if spec and spec.submodule_search_locations:
+        pykx_dir = Path(list(spec.submodule_search_locations)[0])
+        for arch in ["m64", "l64", "m32", "l32"]:
+            candidate = pykx_dir / "lib" / arch / "q"
+            if candidate.exists():
+                env = os.environ.copy()
+                env["QHOME"] = str(pykx_dir / "lib")
+                return (str(candidate), env)
+
+    return None
 
 
 def _evaluate_via_pykx(tests_file: Path, challenge_dir: Path) -> Optional[dict]:
-    """Try to evaluate using PyKX in a subprocess Python process.
+    """Try to evaluate using a discovered q binary as a subprocess.
 
-    Spawns a fresh Python process that imports pykx, loads the tests,
-    and captures all output. This avoids the `exit` issue (tests.q calls exit)
-    and ensures proper CWD handling.
+    Searches for q in ~/q, PATH, and PyKX's bundled binary (in that order).
+    Runs q directly so we get full stdout with section headers and pass/fail.
 
-    IMPORTANT: We do NOT import pykx in the parent process — doing so would
-    start an embedded q instance that conflicts with the subprocess child
-    (causes SIGSEGV). Instead we check if pykx is importable by looking
-    for the package without importing it.
-
-    Returns None if pykx package is not installed.
+    Returns None if no q binary found.
     """
-    import importlib.util
-
-    if importlib.util.find_spec("pykx") is None:
+    found = _find_q_binary()
+    if found is None:
         return None
 
-    import sys
-
-    helper_script = Path(__file__).parent / "_eval_helper.py"
-    start = time.time()
-    try:
-        result = subprocess.run(
-            [sys.executable, str(helper_script), str(challenge_dir.resolve())],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        elapsed = int((time.time() - start) * 1000)
-
-        output = result.stdout + result.stderr
-        sections = parse_sections(output)
-        score = _extract_score(output)
-        total = _extract_total(output)
-        failed = total - score
-        passed_all = result.returncode == 0 and failed == 0 and total > 0
-
-        return {
-            "status": "pass" if passed_all else "fail",
-            "score": score,
-            "total": total,
-            "errors": [output] if not passed_all else [],
-            "elapsed_ms": elapsed,
-            "raw_output": output,
-            "sections": sections,
-        }
-    except subprocess.TimeoutExpired:
-        elapsed = int((time.time() - start) * 1000)
-        return {
-            "status": "timeout",
-            "score": 0,
-            "total": 0,
-            "errors": ["PyKX evaluation timed out after 120s"],
-            "elapsed_ms": elapsed,
-            "raw_output": "",
-            "sections": {},
-        }
+    q_bin, env = found
+    return _evaluate_via_subprocess_with_q(
+        q_bin, tests_file, challenge_dir, env=env
+    )
 
 
 def _evaluate_via_subprocess_with_q(
-    q_bin: str, tests_file: Path, challenge_dir: Path
+    q_bin: str, tests_file: Path, challenge_dir: Path,
+    env: Optional[dict] = None,
 ) -> dict:
     """Evaluate by running a specific q binary as a subprocess."""
     import os
 
-    env = os.environ.copy()
-    # Ensure QHOME and QLIC are set for the subprocess
-    if "QHOME" not in env:
-        env["QHOME"] = str(Path(q_bin).parent.parent)
+    if env is None:
+        env = os.environ.copy()
+        # Ensure QHOME is set for the subprocess
+        if "QHOME" not in env:
+            env["QHOME"] = str(Path(q_bin).parent.parent)
 
     start = time.time()
     try:
@@ -204,6 +204,8 @@ def _evaluate_via_subprocess(tests_file: Path, challenge_dir: Path) -> dict:
 def evaluate_pykx_challenge(challenge_dir: Path, solution_code: str) -> dict:
     """Evaluate a PyKX (Python) solution by writing it and running pytest.
 
+    Copies the challenge dir to a temp directory for concurrency safety.
+
     Args:
         challenge_dir: Path to the challenge directory.
         solution_code: The Python code to evaluate.
@@ -211,48 +213,49 @@ def evaluate_pykx_challenge(challenge_dir: Path, solution_code: str) -> dict:
     Returns:
         Dict with keys: status, score, total, errors, elapsed_ms, raw_output.
     """
-    challenge_file = challenge_dir / "challenge.py"
-    tests_file = challenge_dir / "tests.py"
+    import shutil
+    import tempfile
 
-    original = challenge_file.read_text()
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp) / challenge_dir.name
+        shutil.copytree(challenge_dir, tmp_dir)
 
-    try:
-        challenge_file.write_text(solution_code)
+        (tmp_dir / "challenge.py").write_text(solution_code)
+        tests_file = tmp_dir / "tests.py"
 
         start = time.time()
-        result = subprocess.run(
-            ["python", "-m", "pytest", str(tests_file), "-v", "--tb=short"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            cwd=str(challenge_dir),
-        )
-        elapsed = int((time.time() - start) * 1000)
+        try:
+            result = subprocess.run(
+                ["python", "-m", "pytest", str(tests_file), "-v", "--tb=short"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(tmp_dir),
+            )
+            elapsed = int((time.time() - start) * 1000)
 
-        output = result.stdout + result.stderr
-        passed = result.returncode == 0
+            output = result.stdout + result.stderr
+            passed = result.returncode == 0
 
-        return {
-            "status": "pass" if passed else "fail",
-            "score": _extract_pytest_score(output),
-            "total": _extract_pytest_total(output),
-            "errors": [output] if not passed else [],
-            "elapsed_ms": elapsed,
-            "raw_output": output,
-            "sections": {},  # pytest doesn't use our section format
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "status": "timeout",
-            "score": 0,
-            "total": 0,
-            "errors": ["Execution timed out after 120s"],
-            "elapsed_ms": int((time.time() - start) * 1000),
-            "raw_output": "",
-            "sections": {},
-        }
-    finally:
-        challenge_file.write_text(original)
+            return {
+                "status": "pass" if passed else "fail",
+                "score": _extract_pytest_score(output),
+                "total": _extract_pytest_total(output),
+                "errors": [output] if not passed else [],
+                "elapsed_ms": elapsed,
+                "raw_output": output,
+                "sections": {},
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "timeout",
+                "score": 0,
+                "total": 0,
+                "errors": ["Execution timed out after 120s"],
+                "elapsed_ms": int((time.time() - start) * 1000),
+                "raw_output": "",
+                "sections": {},
+            }
 
 
 def parse_sections(output: str) -> dict:
