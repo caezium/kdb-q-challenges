@@ -4,6 +4,10 @@ An anti-cheat benchmark for testing how well LLMs write kdb+/q code.
 
 Inspired by [effectfully/haskell-challenges](https://github.com/effectfully/haskell-challenges) — hard, language-specific puzzles where the tests themselves are the anti-cheat.
 
+**[→ See LEADERBOARD.md for frontier LLM benchmark results](LEADERBOARD.md)**
+
+Top result: Gemini 3.1 Pro Preview at 6/7 (86%) best-of-3, followed by Claude Opus/Sonnet 4.6 tied at 4/7 (57%). h4-functional-select is unsolved by every model tested.
+
 ## Table of Contents
 
 - [Philosophy](#philosophy)
