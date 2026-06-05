@@ -9,6 +9,10 @@ reference.q
 # verify_reference.py reads these to reproduce a "solutions pass" guarantee.
 solutions/
 
-# Local Kaggle Benchmarks scratch / virtualenv (not part of this benchmark).
+# Local Kaggle Benchmarks virtualenv + per-run scratch (the task itself IS tracked).
 .venv-kaggle/
-kaggle-benchmark/
+kaggle-benchmark/.env
+kaggle-benchmark/*.run.json
+kaggle-benchmark/*.task.json
+kaggle-benchmark/example_task.py
+kaggle-benchmark/kaggle_benchmarks_reference.md
