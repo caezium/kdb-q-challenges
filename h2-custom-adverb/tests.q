@@ -115,8 +115,11 @@ bigdata:enlist each 1000?1000;
 st:.z.p;
 r:compose[myOver;myOver][+;0;bigdata];
 elapsed:(`long$.z.p-st) div 1000000;
--1 "  perf: 1000x1000 completed in ",string[elapsed],"ms";
-assert["performance: 1000x1000 under 3000ms";elapsed<3000]
+-1 "  perf: 1000x1000 completed in ",string[elapsed],"ms (informational)";
+/ No wall-clock gate: h2 has no performance-based anti-cheat (a precomputed
+/ cheat is rejected by the "returns a function" type checks in Section 2), so an
+/ absolute ms threshold only adds machine-dependent flakiness. Correctness on
+/ 1000 sublists already proves the composed wrapper runs end-to-end.
 assertEq["perf result correctness";sum raze bigdata;r]
 
 / ===

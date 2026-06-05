@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -76,93 +77,98 @@ MODELS = {
 }
 
 
-def call_llm(model_key: str, prompt: dict) -> str:
+# Token budgets. Reasoning models spend tokens on hidden chain-of-thought
+# before emitting the answer, so they need a far larger ceiling or the actual
+# code gets truncated and the attempt fails for the wrong reason.
+MAX_TOKENS_STANDARD = 8192
+MAX_TOKENS_REASONING = 32768
+
+
+def _is_openai_reasoning(model: str) -> bool:
+    """True for OpenAI-family reasoning models (o-series, GPT-5+).
+
+    These reject `max_tokens` (need `max_completion_tokens`) and reject any
+    `temperature` other than the default. `model` may carry a provider prefix
+    (e.g. "openai/gpt-5.4") when called via OpenRouter.
+    """
+    name = model.split("/")[-1]
+    return bool(re.match(r"o\d", name)) or name.startswith("gpt-5")
+
+
+def call_llm(model_key: str, prompt: dict, temperature: float = 0.0) -> str:
     """Call an LLM API and return the response text.
 
     Supports both single-turn (system + user) and multi-turn (system + messages).
+    `temperature` is threaded through for reproducibility (0.0) or for drawing
+    diverse independent samples (>0, needed for an honest pass@k).
     """
     config = MODELS[model_key]
     provider = config["provider"]
     model = config["model"]
 
     if provider == "anthropic":
-        return _call_anthropic(model, prompt)
-    elif provider == "openai":
-        return _call_openai(model, prompt)
-    elif provider == "openrouter":
-        return _call_openrouter(model, prompt)
+        return _call_anthropic(model, prompt, temperature)
+    elif provider in ("openai", "openrouter"):
+        return _call_openai_compatible(model, prompt, temperature, provider)
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
 
-def _call_anthropic(model: str, prompt: dict) -> str:
+def _messages_for(prompt: dict, include_system_role: bool) -> list:
+    """Build the message list from a prompt dict (single- or multi-turn)."""
+    turns = prompt["messages"] if "messages" in prompt else [
+        {"role": "user", "content": prompt["user"]}
+    ]
+    if include_system_role:
+        return [{"role": "system", "content": prompt["system"]}] + turns
+    return turns
+
+
+def _call_anthropic(model: str, prompt: dict, temperature: float) -> str:
     """Call Anthropic API. Supports single-turn and multi-turn."""
     import anthropic
 
     client = anthropic.Anthropic()
-
-    if "messages" in prompt:
-        messages = prompt["messages"]
-    else:
-        messages = [{"role": "user", "content": prompt["user"]}]
-
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS_STANDARD,
+        temperature=temperature,
         system=prompt["system"],
-        messages=messages,
+        messages=_messages_for(prompt, include_system_role=False),
     )
-    return response.content[0].text
+    # Concatenate text blocks; thinking blocks (if any) are not `.text`.
+    return "".join(b.text for b in response.content if getattr(b, "type", "") == "text")
 
 
-def _call_openai(model: str, prompt: dict) -> str:
-    """Call OpenAI API. Supports single-turn and multi-turn."""
+def _call_openai_compatible(
+    model: str, prompt: dict, temperature: float, provider: str
+) -> str:
+    """Call OpenAI or any OpenAI-compatible endpoint (e.g. OpenRouter).
+
+    Handles the reasoning-model API differences: `max_completion_tokens`
+    instead of `max_tokens`, and no custom `temperature`.
+    """
     import openai
 
-    client = openai.OpenAI()
-
-    if "messages" in prompt:
-        messages = [{"role": "system", "content": prompt["system"]}] + prompt[
-            "messages"
-        ]
+    if provider == "openrouter":
+        client = openai.OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+        )
     else:
-        messages = [
-            {"role": "system", "content": prompt["system"]},
-            {"role": "user", "content": prompt["user"]},
-        ]
+        client = openai.OpenAI()
 
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=4096,
-        messages=messages,
-    )
-    return response.choices[0].message.content
+    messages = _messages_for(prompt, include_system_role=True)
+    kwargs = {"model": model, "messages": messages}
 
-
-def _call_openrouter(model: str, prompt: dict) -> str:
-    """Call OpenRouter API (OpenAI-compatible with different base URL)."""
-    import openai
-
-    client = openai.OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-    )
-
-    if "messages" in prompt:
-        messages = [{"role": "system", "content": prompt["system"]}] + prompt[
-            "messages"
-        ]
+    if _is_openai_reasoning(model):
+        kwargs["max_completion_tokens"] = MAX_TOKENS_REASONING
+        # temperature is intentionally omitted — reasoning models reject it.
     else:
-        messages = [
-            {"role": "system", "content": prompt["system"]},
-            {"role": "user", "content": prompt["user"]},
-        ]
+        kwargs["max_tokens"] = MAX_TOKENS_STANDARD
+        kwargs["temperature"] = temperature
 
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=4096,
-        messages=messages,
-    )
+    response = client.chat.completions.create(**kwargs)
     return response.choices[0].message.content or ""
 
 
@@ -207,8 +213,13 @@ def run_challenge(
     strategy: str = "zero-shot",
     max_attempts: int = 1,
     output_dir: Optional[Path] = None,
+    temperature: float = 0.0,
 ) -> dict:
     """Run a single challenge against a single model with optional retries.
+
+    Retries here are *sequential with error feedback* (an agentic loop), not
+    independent samples — so the resulting metric is best-of-N, not pass@k.
+    Use ``run_challenge_samples`` for an honest pass@k.
 
     Returns:
         Result dict with model, challenge, status, score, sections, attempt_history, etc.
@@ -225,6 +236,7 @@ def run_challenge(
     last_code = ""
     last_error = ""
     last_result = None
+    first_prompt_hash = ""
 
     for attempt in range(max_attempts):
         if attempt > 0:
@@ -242,15 +254,18 @@ def run_challenge(
                 strategy=strategy,
             )
 
-        # Compute prompt hash for reproducibility
+        # Compute prompt hash for reproducibility (record the first-attempt
+        # prompt — that's the one that defines a run for comparison purposes).
         prompt_str = prompt["system"] + str(prompt.get("user", "")) + str(
             prompt.get("messages", "")
         )
         prompt_hash = hashlib.sha256(prompt_str.encode()).hexdigest()[:16]
+        if attempt == 0:
+            first_prompt_hash = prompt_hash
 
         # Call LLM
         try:
-            raw_response = call_llm(model_key, prompt)
+            raw_response = call_llm(model_key, prompt, temperature=temperature)
         except Exception as e:
             attempt_history.append(
                 {"attempt": attempt + 1, "status": "error", "error": str(e)}
@@ -261,9 +276,25 @@ def run_challenge(
         # Extract code
         if mode == "pykx":
             code = extract_python_code(raw_response)
-            result = evaluate_pykx_challenge(challenge_dir, code)
         else:
             code = extract_q_code(raw_response)
+
+        # No extractable code is a harness/format failure, not a wrong answer.
+        # Score it as "error" so it doesn't masquerade as a model that tried
+        # and got the q semantics wrong.
+        if not code.strip():
+            result = {
+                "status": "error",
+                "score": 0,
+                "total": 0,
+                "errors": ["No code block found in model response"],
+                "elapsed_ms": 0,
+                "raw_output": raw_response[:3000],
+                "sections": {},
+            }
+        elif mode == "pykx":
+            result = evaluate_pykx_challenge(challenge_dir, code)
+        else:
             result = evaluate_q_challenge(challenge_dir, code)
 
         last_code = code
@@ -327,6 +358,92 @@ def run_challenge(
             attempt_history[0]["status"] == "pass" if attempt_history else False
         ),
         "attempt_history": attempt_history,
+        "prompt_hash": first_prompt_hash,
+    }
+
+
+def run_challenge_samples(
+    model_key: str,
+    challenge_name: str,
+    n_samples: int,
+    strategy: str = "zero-shot",
+    output_dir: Optional[Path] = None,
+    temperature: float = 0.6,
+) -> dict:
+    """Draw N *independent* single-shot samples for an honest pass@k.
+
+    No error feedback, no early stop — every sample sees the same fresh prompt.
+    This is the sampling regime the HumanEval/Codex pass@k estimator assumes.
+    Returns a result dict shaped like ``run_challenge`` plus ``n_samples`` and
+    ``n_correct`` so the aggregator can compute the unbiased pass@k.
+    """
+    challenge_dir = ROOT / challenge_name
+    is_pykx = (challenge_dir / "challenge.py").exists() and not (
+        challenge_dir / "challenge.q"
+    ).exists()
+    mode = "pykx" if is_pykx else "q"
+
+    print(
+        f"  [{model_key}] {challenge_name} ({mode}) x{n_samples} @T={temperature}...",
+        end=" ",
+        flush=True,
+    )
+
+    prompt = build_prompt(challenge_dir, mode=mode, strategy=strategy)
+    prompt_str = prompt["system"] + str(prompt.get("user", ""))
+    prompt_hash = hashlib.sha256(prompt_str.encode()).hexdigest()[:16]
+
+    sample_history = []
+    n_correct = 0
+    best = None
+    for i in range(n_samples):
+        try:
+            raw_response = call_llm(model_key, prompt, temperature=temperature)
+        except Exception as e:
+            sample_history.append({"sample": i + 1, "status": "error", "error": str(e)})
+            continue
+
+        code = extract_python_code(raw_response) if mode == "pykx" else extract_q_code(raw_response)
+        if not code.strip():
+            result = {"status": "error", "score": 0, "total": 0, "errors": [],
+                      "elapsed_ms": 0, "raw_output": raw_response[:3000], "sections": {}}
+        elif mode == "pykx":
+            result = evaluate_pykx_challenge(challenge_dir, code)
+        else:
+            result = evaluate_q_challenge(challenge_dir, code)
+
+        if output_dir is not None:
+            save_artifacts(output_dir, model_key, challenge_name, i + 1,
+                           raw_response, code, result.get("raw_output", ""))
+
+        if result["status"] == "pass":
+            n_correct += 1
+        if best is None or result["status"] == "pass":
+            best = result
+        sample_history.append({
+            "sample": i + 1, "status": result["status"],
+            "score": result["score"], "total": result["total"],
+            "sections": result.get("sections", {}),
+        })
+
+    best = best or {"status": "error", "score": 0, "total": 0,
+                    "errors": ["all samples errored"], "elapsed_ms": 0, "sections": {}}
+    passed = n_correct > 0
+    print(f"{n_correct}/{n_samples} passed")
+
+    return {
+        "model": model_key,
+        "challenge": challenge_name,
+        "challenge_type": mode,
+        "status": "pass" if passed else best["status"],
+        "score": best["score"],
+        "total": best["total"],
+        "elapsed_ms": best.get("elapsed_ms", 0),
+        "errors": best.get("errors", []),
+        "sections": best.get("sections", {}),
+        "n_samples": n_samples,
+        "n_correct": n_correct,
+        "sample_history": sample_history,
         "prompt_hash": prompt_hash,
     }
 
@@ -356,7 +473,22 @@ def main():
         "--attempts",
         type=int,
         default=1,
-        help="Max attempts per challenge (1-5). On failure, error is fed back.",
+        help="Max sequential attempts per challenge (1-5). On failure, the error "
+        "is fed back (agentic best-of-N — NOT pass@k). Mutually exclusive with --samples.",
+    )
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=1,
+        help="Draw N independent single-shot samples per challenge for an honest "
+        "pass@k (no feedback, no early stop). Overrides --attempts when > 1.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Sampling temperature. Default 0.0 for reproducibility, or 0.6 when "
+        "--samples > 1 (pass@k needs sample diversity). Ignored by reasoning models.",
     )
     parser.add_argument(
         "--strategy",
@@ -391,6 +523,13 @@ def main():
 
     # Validate
     args.attempts = max(1, min(5, args.attempts))
+    args.samples = max(1, args.samples)
+    sampling_mode = args.samples > 1
+    # Default temperature: deterministic unless we're drawing samples for pass@k.
+    if args.temperature is None:
+        args.temperature = 0.6 if sampling_mode else 0.0
+    if sampling_mode and args.attempts > 1:
+        print("[note] --samples > 1 overrides --attempts; using independent sampling.")
 
     model_keys = [m.strip() for m in args.models.split(",")]
     for mk in model_keys:
@@ -430,10 +569,17 @@ def main():
     print(f"Strategy:   {args.strategy}")
     print(f"Attempts:   {args.attempts}")
     print(f"Output:     {args.output}")
+    if sampling_mode:
+        print(f"Samples:    {args.samples} (independent, pass@k)")
+    print(f"Temperature:{args.temperature}")
     print()
 
     # Collect metadata
     run_meta = _get_run_metadata(model_keys, args.strategy, args.attempts)
+    run_meta["temperature"] = args.temperature
+    run_meta["mode"] = "samples" if sampling_mode else "attempts"
+    if sampling_mode:
+        run_meta["samples"] = args.samples
 
     # Run all combinations — models in parallel, challenges sequential per model
     def _run_model(model_key):
@@ -441,13 +587,24 @@ def main():
         results = []
         print(f"\n=== {model_key} ===")
         for challenge in challenges:
-            result = run_challenge(
-                model_key,
-                challenge,
-                strategy=args.strategy,
-                max_attempts=args.attempts,
-                output_dir=artifact_dir,
-            )
+            if sampling_mode:
+                result = run_challenge_samples(
+                    model_key,
+                    challenge,
+                    n_samples=args.samples,
+                    strategy=args.strategy,
+                    output_dir=artifact_dir,
+                    temperature=args.temperature,
+                )
+            else:
+                result = run_challenge(
+                    model_key,
+                    challenge,
+                    strategy=args.strategy,
+                    max_attempts=args.attempts,
+                    output_dir=artifact_dir,
+                    temperature=args.temperature,
+                )
             results.append(result)
         return results
 

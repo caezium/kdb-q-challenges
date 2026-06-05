@@ -9,36 +9,58 @@ from pathlib import Path
 from typing import Optional
 
 
+def _fenced_blocks(text: str) -> list[tuple[str, str]]:
+    """Return all fenced code blocks as (lang, body), in document order.
+
+    `lang` is the lowercased fence info-string (may be "").
+    """
+    blocks = []
+    for m in re.finditer(r"```([^\n`]*)\n(.*?)```", text, re.DOTALL):
+        lang = m.group(1).strip().lower()
+        blocks.append((lang, m.group(2).strip()))
+    return blocks
+
+
+def _extract_code(llm_response: str, preferred_langs: set[str]) -> str:
+    """Extract a code block from an LLM response.
+
+    Reasoning models routinely emit prose (and sometimes throwaway example
+    blocks) before the real answer, so we take the LAST block whose language
+    tag matches `preferred_langs`. Falling back: the last language-tagged block,
+    then the last untagged block, then the whole response with prose prefixes
+    stripped. Returns "" when nothing usable is found, so the caller can score
+    the attempt as an error rather than feeding garbage to the interpreter.
+    """
+    if not llm_response or not llm_response.strip():
+        return ""
+
+    blocks = _fenced_blocks(llm_response)
+    if blocks:
+        preferred = [b for lang, b in blocks if lang in preferred_langs]
+        if preferred:
+            return preferred[-1]
+        tagged = [b for lang, b in blocks if lang]
+        if tagged:
+            return tagged[-1]
+        return blocks[-1][1]
+
+    # No fences: the prompt asked for bare code, but models still add a line of
+    # preamble. Drop leading prose-looking lines until the first code-looking one.
+    code = llm_response.strip()
+    for prefix in ["Here is", "Here's", "Sure", "Solution:", "Answer:", "Certainly"]:
+        if code.lower().startswith(prefix.lower()):
+            code = code.split("\n", 1)[-1].strip() if "\n" in code else ""
+    return code.strip()
+
+
 def extract_q_code(llm_response: str) -> str:
     """Extract q code from an LLM response, stripping markdown fences."""
-    if not llm_response:
-        return ""
-    # Try to extract from code fences first
-    fence_match = re.search(r"```(?:q|kdb)?\s*\n(.*?)```", llm_response, re.DOTALL)
-    if fence_match:
-        return fence_match.group(1).strip()
-
-    # If no fences, assume the whole response is code
-    # Strip any leading/trailing whitespace and common non-code prefixes
-    code = llm_response.strip()
-    for prefix in ["Here is", "Here's", "Solution:", "Answer:"]:
-        if code.lower().startswith(prefix.lower()):
-            code = code[len(prefix) :].strip()
-            if code.startswith(":"):
-                code = code[1:].strip()
-    return code
+    return _extract_code(llm_response, {"q", "kdb", "kdb+", "k"})
 
 
 def extract_python_code(llm_response: str) -> str:
     """Extract Python code from an LLM response."""
-    if not llm_response:
-        return ""
-    fence_match = re.search(
-        r"```(?:python|py)?\s*\n(.*?)```", llm_response, re.DOTALL
-    )
-    if fence_match:
-        return fence_match.group(1).strip()
-    return llm_response.strip()
+    return _extract_code(llm_response, {"python", "py"})
 
 
 def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:

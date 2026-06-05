@@ -130,13 +130,19 @@ assert["float type"; 9h=type scanz[{(1b;x+y)};0.0;1.0 2.0 3.0]]
 / ============================================================
 -1 "\n--- performance ---";
 
-/ 10M elements, stops at element 3 — must be fast
+/ 10M elements, stops at element ~3 — must short-circuit, not scan all 10M.
 bigdata:10000000?100;
+/ Machine-INDEPENDENT baseline: one full O(n) vectorized pass over all 10M.
+/ A short-circuiting solution touches O(k) elements and is far faster than this;
+/ a brute-force solution that scans everything cannot beat a single full pass.
+b0:.z.P;
+bfull:sums bigdata;
+baseMs:(`long$.z.P-b0) div 1000000;
 t0:.z.P;
 r:scanz[{((x+y)<50;x+y)};0;bigdata];
 elapsed:(`long$.z.P-t0) div 1000000;  / ms
--1 "  big list early stop: ",string[elapsed],"ms, result length: ",string count r;
-assert["early stop is fast (<500ms)"; elapsed<500]
+-1 "  big list early stop: ",string[elapsed],"ms vs full O(n) pass ",string[baseMs],"ms, result length: ",string count r;
+assert["early stop short-circuits (faster than a full pass)"; elapsed <= 2 * 1 | baseMs]
 assert["early stop result is short"; (count r)<100]
 
 / 100K elements, never stops — must still be reasonable

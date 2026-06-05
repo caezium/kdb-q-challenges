@@ -36,10 +36,14 @@ eval r
 ### Constraints
 
 - Output must be a list (the parse tree), NOT the result of running the query.
-- Empty where clause (`()`) means no filter.
-- Empty group-by (`` `$() ``) means no grouping.
-- Empty aggregations means select all columns (the `a` parameter should be `0b`).
-- Must handle enlist correctly for single where clauses (the parse tree needs `enlist` for single constraints).
+- Empty where clause (`()`) means no filter (the `c` slot becomes `()`).
+- Empty group-by (`` `$() ``) means no grouping (the `b` slot becomes `0b`).
+- Empty aggregations means select all columns (the `a` slot becomes `()`, the
+  empty list — note: `0b` is the *group-by* "none" sentinel and errors if used
+  for `a`).
+- Must handle `enlist` correctly for the where clauses: the constraint list is
+  wrapped in a single `enlist`, e.g. one clause `"price>100"` →
+  `enlist enlist (>;\`price;100)`, two clauses → `enlist ((..);(..))`.
 - Solution should be under ~20 lines.
 
 ### Running

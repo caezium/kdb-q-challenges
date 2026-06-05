@@ -4,9 +4,9 @@ An anti-cheat benchmark for testing how well LLMs write kdb+/q code.
 
 Inspired by [effectfully/haskell-challenges](https://github.com/effectfully/haskell-challenges) — hard, language-specific puzzles where the tests themselves are the anti-cheat.
 
-**[→ See LEADERBOARD.md for frontier LLM benchmark results](LEADERBOARD.md)**
+**[→ See LEADERBOARD.md for frontier LLM benchmark results](LEADERBOARD.md)** (numbers are indicative, not yet reproducible — see the warning there and [HARDENING.md](HARDENING.md))
 
-Top result: Gemini 3.1 Pro Preview at 6/7 (86%) best-of-3, followed by Claude Opus/Sonnet 4.6 tied at 4/7 (57%). h4-functional-select is unsolved by every model tested.
+Indicative best-of-3 results: Gemini 3.1 Pro Preview led at 6/7, with Claude Opus/Sonnet 4.6 around 4/7, and h4-functional-select unsolved by every model tested. These predate the harness fixes in [HARDENING.md](HARDENING.md); rerun with the hardened runner before citing them. For a reproducible signal that the suites themselves are sound, run `python verify_reference.py`.
 
 ## Table of Contents
 
@@ -231,7 +231,7 @@ python -m pytest tests.py -v
 | h4 | [functional-select](h4-functional-select/) | Build a `?[t;c;b;a]` parse tree — functional select enlist semantics | Medium-Hard |
 | h5 | [tree-unfold](h5-tree-unfold/) | BFS tree as a table — recursion hits q's ~200-frame stack limit | Hard |
 | h6 | [vector-partition](h6-vector-partition/) | Vectorized multi-key grouping — no `each`/`do`/`while` allowed | Medium-Hard |
-| h7 | [adverb-algebra](h7-adverb-algebra/) | Incremental sliding-window scan — must be O(n) not O(n*w) | Hard |
+| h7 | [adverb-algebra](h7-adverb-algebra/) | Incremental sliding-window scan over an **invertible** aggregation (the `f[prev;entering;exiting]` contract; tested with windowed sum) — must be O(n) not O(n*w) | Hard |
 
 ### PyKX Challenges
 
@@ -300,9 +300,21 @@ python -m runner.runner --models claude-sonnet-4-6,gpt-4o --challenges all --inc
 python -m runner.runner --models gpt-4.1 --challenges all \
   --strategy few-shot --attempts 5 --compare ./results/results_20260403_120000.json
 
+# Honest pass@k: 10 INDEPENDENT samples per challenge (no feedback) at T=0.8
+python -m runner.runner --models claude-sonnet-4-6 --challenges all --samples 10 --temperature 0.8
+
+# Deterministic single run (temperature defaults to 0.0 outside sampling mode)
+python -m runner.runner --models claude-sonnet-4-6 --challenges all
+
 # Skip artifact saving for quick runs
 python -m runner.runner --models claude-sonnet-4-6 --challenges j1-lazy-scan --no-artifacts
 ```
+
+> **`--attempts` vs `--samples`:** `--attempts N` is agentic best-of-N (sequential
+> retries with the test error fed back) — reported as `best_of_n_pass_rate`.
+> `--samples N` is independent sampling for an honest **pass@k** — reported as
+> `pass@1/3/5/…`. They are different metrics; the runner will not relabel one as
+> the other.
 
 **CLI flags:**
 
@@ -334,7 +346,15 @@ When `--attempts N` is set (N > 1), the runner retries on failure:
 
 This simulates agentic coding workflows (Claude Code, Cursor, etc.) and measures "attempts to pass."
 
-The runner tracks both **first-shot pass rate** and **best-of-N pass rate**, plus the standard **Pass@k** metric from the Codex/HumanEval paper.
+The runner tracks **first-shot pass rate** and **best-of-N pass rate** (best-of-N
+is the agentic retry-with-feedback metric — it is *not* pass@k, because the
+samples are sequential and conditioned on the previous error).
+
+For an honest **Pass@k** (the Codex/HumanEval estimator), use `--samples N`
+instead of `--attempts`: it draws N *independent* single-shot samples (no
+feedback, no early stop) at a non-zero temperature and computes the unbiased
+estimator. `--attempts` and `--samples` measure different things; don't compare
+a best-of-3 number to a published pass@3.
 
 ### Output Format
 
@@ -425,7 +445,7 @@ Tests are the anti-cheat. Each challenge bakes detection into the test suite its
 | **Type checking** | Assert exact q types match (`7h`, `9h`, `98h`, etc.) | Type coercion cheats |
 | **Property tests** | 50–100 random seeds verify mathematical invariants | Solutions that pass examples but fail in general |
 | **Performance bounds** | Wall-clock timing via `.z.P` with ms precision | O(n) brute force where O(k) is required |
-| **Source inspection** | Parse function string via `-3!` for forbidden keywords | `each`/`do`/`while` in h6 where vectorization is required |
+| **Source inspection** | Inspect `string fn` for forbidden iteration — the `each`/`peach` keywords **and** the each adverb glyph `'` (banning only the word `each` misses `f'[x]`), plus `do[`/`while[` loops | `each`/`'`/`do`/`while` in h6 where vectorization is required |
 | **Invocation counting** | Inject counter into callback function | O(n*w) brute force in h7 where O(n) is required |
 | **Equivalence checks** | Result must match a known-correct q built-in (e.g., `msum`, `aj`) | Partially correct implementations |
 

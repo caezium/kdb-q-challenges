@@ -81,6 +81,8 @@ def aggregate_results(all_results: list[dict], run_meta: Optional[dict] = None) 
         passed = int((group["status"] == "pass").sum())
         first_shot = int(group["first_shot_pass"].sum()) if "first_shot_pass" in group else passed
 
+        is_sampling = "n_samples" in group.columns and group["n_samples"].notna().any()
+
         model_summary = {
             "model": model,
             "total_challenges": n_challenges,
@@ -95,21 +97,38 @@ def aggregate_results(all_results: list[dict], run_meta: Optional[dict] = None) 
             "challenges": [],
         }
 
-        # Compute pass@k if we have attempt history
-        if "attempt_history" in group.columns:
-            for k_val in [1, 3, 5]:
-                pass_k_scores = []
+        if is_sampling:
+            # Honest pass@k: each challenge contributes c correct out of n
+            # *independent* samples (HumanEval/Codex estimator). Only k <= n is
+            # defined, so we report whichever k values the sample budget supports.
+            sample_sizes = [
+                int(r["n_samples"]) for _, r in group.iterrows()
+                if r.get("n_samples")
+            ]
+            max_n = min(sample_sizes) if sample_sizes else 0
+            for k_val in [1, 3, 5, 10]:
+                if k_val > max_n:
+                    continue
+                scores = []
                 for _, row in group.iterrows():
-                    history = row.get("attempt_history", [])
-                    n = len(history)
-                    c = sum(1 for a in history if a.get("status") == "pass")
+                    n = int(row.get("n_samples") or 0)
+                    c = int(row.get("n_correct") or 0)
                     score = compute_pass_at_k(n, c, k_val)
                     if not math.isnan(score):
-                        pass_k_scores.append(score)
-                if pass_k_scores:
-                    model_summary[f"pass@{k_val}"] = round(
-                        sum(pass_k_scores) / len(pass_k_scores), 3
-                    )
+                        scores.append(score)
+                if scores:
+                    model_summary[f"pass@{k_val}"] = round(sum(scores) / len(scores), 3)
+        elif "attempt_history" in group.columns:
+            # Sequential retries with error feedback are NOT i.i.d. samples, so
+            # this is best-of-N (a.k.a. solve@N with feedback), not pass@k.
+            # Reporting it as pass@k would invite false comparison with HumanEval.
+            best_of_n = float(
+                sum(
+                    1 for _, row in group.iterrows()
+                    if any(a.get("status") == "pass" for a in row.get("attempt_history", []))
+                ) / n_challenges
+            ) if n_challenges else 0.0
+            model_summary["best_of_n_pass_rate"] = round(best_of_n, 3)
 
         for _, row in group.iterrows():
             ch_data = {
@@ -124,8 +143,12 @@ def aggregate_results(all_results: list[dict], run_meta: Optional[dict] = None) 
                 "first_shot_pass": row.get("first_shot_pass", row["status"] == "pass"),
                 "prompt_hash": row.get("prompt_hash", ""),
             }
-            if "attempt_history" in row:
+            if "attempt_history" in row and isinstance(row.get("attempt_history"), list):
                 ch_data["attempt_history"] = row["attempt_history"]
+            if row.get("n_samples"):
+                ch_data["n_samples"] = int(row["n_samples"])
+                ch_data["n_correct"] = int(row.get("n_correct") or 0)
+                ch_data["sample_history"] = row.get("sample_history", [])
             model_summary["challenges"].append(ch_data)
 
         summary["models"].append(model_summary)
@@ -195,9 +218,14 @@ def generate_report(
         lines.append(f"| Setting | Value |")
         lines.append(f"|---------|-------|")
         lines.append(f"| Strategy | {rc.get('strategy', 'zero-shot')} |")
-        lines.append(f"| Max Attempts | {rc.get('max_attempts', 1)} |")
-        lines.append(f"| Git Commit | `{rc.get('git_commit', 'unknown')[:8]}` |")
-        lines.append(f"| q Version | {rc.get('q_version', 'unknown')} |")
+        lines.append(f"| Mode | {rc.get('mode', 'attempts')} |")
+        if rc.get("mode") == "samples":
+            lines.append(f"| Samples (pass@k) | {rc.get('samples', 1)} |")
+        else:
+            lines.append(f"| Max Attempts (best-of-N) | {rc.get('max_attempts', 1)} |")
+        lines.append(f"| Temperature | {rc.get('temperature', 'n/a')} |")
+        lines.append(f"| Git Commit | `{(rc.get('git_commit') or 'unknown')[:8]}` |")
+        lines.append(f"| q Version | {rc.get('q_version') or 'unknown'} |")
         lines.append("")
 
     # Leaderboard
@@ -217,17 +245,20 @@ def generate_report(
         )
     lines.append("")
 
-    # Pass@k table if available
-    has_pass_k = any("pass@1" in m for m in models)
-    if has_pass_k:
+    # Pass@k table — only populated in independent-sampling mode (honest pass@k).
+    k_vals = sorted(
+        {int(key.split("@")[1]) for m in models for key in m if key.startswith("pass@")}
+    )
+    if k_vals:
         lines.append("## Pass@k\n")
-        lines.append("| Model | Pass@1 | Pass@3 | Pass@5 |")
-        lines.append("|-------|--------|--------|--------|")
+        lines.append("_Unbiased HumanEval estimator over independent samples._\n")
+        lines.append("| Model |" + "".join(f" Pass@{k} |" for k in k_vals))
+        lines.append("|-------|" + "".join("--------|" for _ in k_vals))
         for m in models:
-            p1 = f"{m.get('pass@1', '-')}"
-            p3 = f"{m.get('pass@3', '-')}"
-            p5 = f"{m.get('pass@5', '-')}"
-            lines.append(f"| {m['model']} | {p1} | {p3} | {p5} |")
+            row = f"| {m['model']} |"
+            for k in k_vals:
+                row += f" {m.get(f'pass@{k}', '-')} |"
+            lines.append(row)
         lines.append("")
 
     # Per-challenge breakdown
