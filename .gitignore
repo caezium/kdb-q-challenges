@@ -4,3 +4,11 @@ __pycache__/
 .env
 *.log
 reference.q
+
+# Author-held reference solutions — committing them would leak the benchmark.
+# verify_reference.py reads these to reproduce a "solutions pass" guarantee.
+solutions/
+
+# Local Kaggle Benchmarks scratch / virtualenv (not part of this benchmark).
+.venv-kaggle/
+kaggle-benchmark/

@@ -1,12 +1,28 @@
 # kdb-q-challenges Leaderboard
 
-Official results from running the benchmark against frontier LLMs via OpenRouter.
+> [!WARNING]
+> **These numbers are not reproducible from this repository and should be treated
+> as indicative only.** The source `results/*.json` files are gitignored, so the
+> figures below cannot be independently audited. They were also collected before
+> the harness hardening (see [HARDENING.md](HARDENING.md)) that fixed broken
+> reasoning-model API calls and removed machine-dependent timing gates — both of
+> which affect scores. For a *reproducible* signal, run `python verify_reference.py`
+> (proves the reference solutions pass every section on your machine), and
+> regenerate model numbers with the hardened runner.
+>
+> **Known inconsistency:** the table below reports `j1-lazy-scan` as **100%
+> first-shot (6/6)**, "tractable", yet [CLAUDE-ASSESSMENT.md](CLAUDE-ASSESSMENT.md)
+> documents j1 as the *hardest* trap (estimated 10–20%, required human
+> intervention after four failed attempts). Both cannot be true. Until a
+> reproducible run resolves it, distrust the j1 row in particular.
+
+Results from running the benchmark against frontier LLMs via OpenRouter.
 
 **Last updated:** 2026-04-10
 **Strategy:** zero-shot
-**Max attempts:** 3 (with error feedback on retries)
+**Max attempts:** 3 (with error feedback on retries) — this is **best-of-3**, not pass@3
 **Evaluator:** user's kdb+ personal edition via subprocess
-**Seed:** benchmark randomness is seeded; model stochasticity is not controlled
+**Seed:** benchmark randomness is seeded; model stochasticity is not controlled (N=1 sample)
 
 ## Overall Leaderboard
 

@@ -142,8 +142,11 @@ st:.z.p;
 rPerf:slideScan[fsum;100;bigData];
 et:.z.p;
 ms:(`long$(et - st)) % 1000000;
--1 "  performance: ",string[ms],"ms for 1M rows, w=100";
-assert["performance < 3000ms"; ms < 3000];
+-1 "  performance: ",string[ms],"ms for 1M rows, w=100 (informational)";
+/ NOTE: no wall-clock assert here. The intended solution is an interpreted
+/ per-element scan, so absolute timing is both machine-dependent AND a poor
+/ signal. The real anti-brute-force guarantee is the INVOCATION COUNT below
+/ (O(n), not O(n*w)) — which is exact and hardware-independent.
 assert["performance result length"; N = count rPerf];
 
 / Verify invocation count is ~n, not n*w

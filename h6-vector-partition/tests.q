@@ -59,14 +59,20 @@ assertEq["numeric keys - 2"; `q`s; r7[enlist 2]];
 / ============================================================
 -1 "\n--- Section 2: Anti-Cheat ---";
 
-/ Source code inspection: no each, do, while
+/ Source code inspection: no element-wise iteration — must be vectorized.
+/ NOTE: `ss` is pattern-based (like `like`), so `[` is escaped as `[[]`.
+/ Banning only the *word* "each" misses f'[x] (the each adverb glyph), the most
+/ direct bypass — so we also forbid a `'` that isn't forming each-prior (':).
+/ (Limitation: an apostrophe inside an inline comment would false-positive; q
+/  lambdas almost never contain those.)
 src:string vpart;
-assert["no each in source"; not any src ss "each"];
-/ Use careful patterns to avoid false positives with "do" inside words
-/ Check for " do[" or " do " which are the loop forms
-hasDo:(any src ss " do[[]") or (any src ss " do ") or (any src ss "\tdo[[]") or (any src ss "\tdo ");
-assert["no do loop in source"; not hasDo];
-assert["no while in source"; not any src ss "while"];
+apos:where "'"=src;                 / positions of the apostrophe (each adverb)
+aposNext:src apos+1;                / char after each ' (out-of-range -> " ")
+hasEachGlyph:any not ":"=aposNext;  / a ' not forming each-prior (':) = each
+assert["no each keyword/peach in source"; not any src ss "each"];
+assert["no each adverb (') in source"; not hasEachGlyph];
+assert["no do loop in source"; not any src ss "do[[]"];
+assert["no while loop in source"; not any src ss "while"];
 
 / Anti-constant: different inputs produce different results
 rc1:vpart[enlist `a`b`a; 10 20 30];
@@ -157,8 +163,17 @@ st:.z.p;
 rPerf:vpart[(bigK1;bigK2;bigK3); bigD];
 et:.z.p;
 ms:(`long$(et - st)) % 1000000;
--1 "  performance: ",string[ms],"ms for 1M rows";
-assert["performance < 3000ms"; ms < 3000];
+/ Machine-INDEPENDENT performance gate: compare against the vectorized `group`
+/ primitive on the same hardware, not an absolute wall-clock ceiling. A truly
+/ vectorized solution stays within a small constant factor; an element-wise
+/ cheat (each / each-right over groups) blows up by orders of magnitude and is
+/ caught here regardless of how fast the machine is.
+bst:.z.p;
+gBase:group flip (bigK1;bigK2;bigK3);
+bet:.z.p;
+baseMs:(`long$(bet - bst)) % 1000000;
+-1 "  performance: ",string[ms],"ms vs group baseline ",string[baseMs],"ms (1M rows)";
+assert["vectorized: within 25x of group primitive"; ms <= 25 * 1 | baseMs];
 assert["performance result is dict"; 99h = type rPerf];
 assert["performance correct count"; N = sum count'[value rPerf]];
 

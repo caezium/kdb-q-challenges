@@ -175,11 +175,18 @@ qTimeP:asc 09:30:00.000+nQ?23400000;
 qBidP:nQ?500.0;
 qtsPerf:`sym`time xcols `sym xasc ([] sym:qSymP; time:qTimeP; bid:qBidP; ask:qBidP+nQ?10.0);
 
+/ Machine-INDEPENDENT gate: tbridge is `aj` plus a couple of vectorized column
+/ updates, so it should stay within a small constant factor of plain `aj` on the
+/ same hardware. A row-by-row (non-`aj`) implementation blows past this bound
+/ regardless of machine speed.
+bst:.z.p;
+ajBase:aj[`sym`time; trdsPerf; `sym`time xasc qtsPerf];
+baseMs:(`long$.z.p-bst) div 1000000;
 st:.z.p;
 rPerf:tbridge[trdsPerf;qtsPerf;0D00:00:30];
 elapsed:(`long$.z.p-st) div 1000000;
--1 "  perf: 100K trades x 200K quotes completed in ",string[elapsed],"ms";
-assert["performance: 100K x 200K under 5000ms";elapsed<5000]
+-1 "  perf: 100K trades x 200K quotes in ",string[elapsed],"ms vs aj baseline ",string[baseMs],"ms";
+assert["performance: within 10x of aj primitive";elapsed <= 10 * 1 | baseMs]
 assertEq["perf: result count matches trades";count trdsPerf;count rPerf]
 
 / ===

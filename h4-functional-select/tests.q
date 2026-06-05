@@ -144,11 +144,17 @@ bigtbl:([] sym:bigN?`AAPL`GOOG`MSFT`TSLA`AMZN; price:bigN?500f; vol:bigN?10000);
 `bigtbl set bigtbl;
 
 specPerf:`t`c`b`a!(`bigtbl; ("price>50";"vol>1000"); enlist `sym; `ap`tv`cnt!("avg price";"sum vol";"count i"))
+/ Machine-INDEPENDENT baseline: the same query as native qSQL, 100x. qbuild adds
+/ only parse-tree construction (cheap vs the 100K-row scan), so build+eval should
+/ track native select within a small factor on any hardware.
+bst:.z.P;
+do[100; select ap:avg price, tv:sum vol, cnt:count i by sym from bigtbl where price>50, vol>1000];
+baseMs:(`long$.z.P-bst) div 1000000;
 st:.z.P;
 do[100; eval qbuild specPerf];
 elapsed:(`long$.z.P-st) div 1000000;
--1 "  perf: 100 iterations in ",string[elapsed],"ms";
-assert["performance: 100 complex queries < 2000ms"; elapsed < 2000]
+-1 "  perf: 100 iterations in ",string[elapsed],"ms vs native qSQL ",string[baseMs],"ms";
+assert["performance: within 5x of native qSQL"; elapsed <= 5 * 1 | baseMs]
 
 / ============================================================
 summary[]
