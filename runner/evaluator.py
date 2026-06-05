@@ -63,6 +63,33 @@ def extract_python_code(llm_response: str) -> str:
     return _extract_code(llm_response, {"python", "py"})
 
 
+def _script_safe_q(code: str) -> str:
+    """Indent continuation lines so multi-line q loads correctly under ``\\l``.
+
+    q's script loader starts a NEW statement on any line that begins at column 0,
+    so a multi-line function whose closing ``}`` sits at column 0 (how Claude/Qwen
+    and most humans format q) fails to load — the function never closes. Without
+    this, the benchmark silently favors models that emit one-liners and zeroes
+    everyone else. We indent any line that begins while a ``(){}[]`` bracket is
+    still open, leaving genuine top-level statements at column 0 untouched.
+
+    (Naive bracket count: does not parse q string/char/comment literals. The
+    challenge solutions don't contain bracket characters inside those, so this is
+    safe here; revisit if a solution needs e.g. ``"}"`` inside a string.)
+    """
+    out, depth = [], 0
+    for idx, line in enumerate(code.split("\n")):
+        if idx > 0 and depth > 0 and line[:1] not in (" ", "\t", ""):
+            line = " " + line
+        for ch in line:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(0, depth - 1)
+        out.append(line)
+    return "\n".join(out)
+
+
 def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
     """Evaluate a pure q solution by writing it and running tests.
 
@@ -85,8 +112,8 @@ def evaluate_q_challenge(challenge_dir: Path, solution_code: str) -> dict:
         tmp_dir = Path(tmp) / challenge_dir.name
         shutil.copytree(challenge_dir, tmp_dir)
 
-        # Write solution into the temp copy
-        (tmp_dir / "challenge.q").write_text(solution_code)
+        # Write solution into the temp copy (normalized so multi-line q loads).
+        (tmp_dir / "challenge.q").write_text(_script_safe_q(solution_code))
         tests_file = tmp_dir / "tests.q"
 
         # Try PyKX's bundled q first
