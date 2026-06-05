@@ -45,7 +45,14 @@ A *benchmark* (the public collection that wraps this task) is created in the
 Kaggle web UI — the CLI manages individual tasks only.
 
 ## Live task
-https://www.kaggle.com/benchmarks/tasks/caesium137/kdb-q-output-prediction/1
+https://www.kaggle.com/benchmarks/tasks/caesium137/kdb-q-output-prediction/3
+
+> The task returns `-> float` (accuracy) so the Kaggle leaderboard renders a
+> **numerical score**. (A `-> dict` return is not rankable and the board shows
+> every run as PASS/FAIL — that was the v1 bug.) Note: the Model-Proxy applies a
+> per-request **cost cap**, so the pricier models (Opus/Sonnet) can 403 with
+> "max estimated cost"; those runs score artificially low (the errors count as
+> wrong). The cheaper models run clean.
 
 ### First run (June 2026, 25 items, temperature default)
 | Model | Acc | weak spot |

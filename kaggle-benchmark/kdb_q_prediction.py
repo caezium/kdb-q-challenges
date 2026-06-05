@@ -119,16 +119,28 @@ def grade(predict):
 
 
 # %%
-@kbench.task(name="kdb-q-output-prediction")
-def kdb_q_output_prediction(llm) -> dict:
-    """Predict the exact output of q expressions; score = fraction correct."""
+@kbench.task(
+    name="kdb-q-output-prediction",
+    description=(
+        "Predict the exact output of 25 tricky kdb+/q expressions "
+        "(right-to-left parsing, adverbs, temporal arithmetic, functional "
+        "select, grouping, sliding windows). Score = fraction matching q."
+    ),
+)
+def kdb_q_output_prediction(llm) -> float:
+    # Returns a float (accuracy) so the leaderboard renders a NUMERICAL SCORE and
+    # ranks models. A `-> dict` return is not rankable and shows as PASS/FAIL.
+    # The per-item assertions populate the run's detail / Compare-Outputs view
+    # without affecting the score. Keep the docstring short: the task description
+    # must be <= 255 chars (it's set explicitly above).
     accuracy, by_tag, details = grade(lambda e: llm.prompt(build_prompt(e)))
     for d in details:
         kbench.assertions.assert_true(
             d["ok"],
-            expectation=f"{d['expr']}  =>  {d['gold']!r}   (got {d['got']!r})",
+            expectation=f"[{d['tag']}] {d['expr']}  =>  {d['gold']!r}   (got {d['got']!r})",
         )
-    return {"accuracy": round(accuracy, 3), "by_challenge": by_tag, "n": len(ITEMS)}
+    print(f"accuracy={accuracy:.3f}  by_challenge={by_tag}  n={len(ITEMS)}")
+    return round(accuracy, 3)
 
 
 # %%
