@@ -13,5 +13,6 @@ solutions/
 .venv-kaggle/
 kaggle-benchmark/.env
 kaggle-benchmark/*.run.json
+kaggle-benchmark/*.task.json
 kaggle-benchmark/example_task.py
 kaggle-benchmark/kaggle_benchmarks_reference.md
