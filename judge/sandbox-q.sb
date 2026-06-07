@@ -1,0 +1,73 @@
+;; sandbox-q.sb — macOS sandbox-exec (SBPL) profile for running UNTRUSTED
+;; model-generated q under the judge. DRAFT / prototype hardening.
+;;
+;; Substitute the placeholders before use (run-q-sandboxed.sh does this):
+;;   @TMPDIR@  -> the per-run temp challenge dir (the ONLY writable path)
+;;   @QHOME@   -> the q installation dir (read-only; holds kc.lic, the binary)
+;;
+;; Threat model: a malicious solution tries to (a) WRITE/destroy files outside
+;; its temp dir, (b) SHELL OUT via q's `system "..."`, (c) READ secrets
+;; (kc.lic, ~/.ssh), or (d) EXFILTRATE over the network.
+;;
+;; ==========================================================================
+;; EMPIRICALLY VERIFIED ON THIS MACHINE (macOS 25.5, kc.lic over VPN):
+;;
+;;   ENFORCED reliably:
+;;     (a) WRITE confinement — deny-default + write-allow only under @TMPDIR@.
+;;         Verified: writing outside @TMPDIR@ is blocked (no file created).
+;;     (b) SHELL-OUT blocked — (deny process-fork): q `system "curl ..."`
+;;         fails, no subprocess spawned. Verified.
+;;         process-exec is confined to @QHOME@ (sandbox-exec needs it to launch
+;;         q; nothing else can be exec'd).
+;;
+;;   NOT ENFORCEABLE here (documented gaps — need a dedicated host to close):
+;;     (c) READ confinement — q ABORTS (SIGABRT) if file-read is narrowed below
+;;         a broad `(subpath "/")` (it needs dyld caches, frameworks, configs in
+;;         many places). And a later `(deny file-read* (subpath "secret"))`
+;;         carve-out does NOT override the broad allow in this SBPL evaluation
+;;         (verified: a "secret" file was still readable). => kc.lic / ~/.ssh
+;;         remain readable by the solution.
+;;     (d) NETWORK egress pinning — the kc.lic cloud license connects at startup
+;;         to a VPN-REMAPPED synthetic IP (observed 198.18.0.46:80, in
+;;         198.18.0.0/15 over utun7) that is not stable, and SBPL has no CIDR
+;;         and its `(remote ip "*:80")` / `*:53` port filters did NOT match the
+;;         daemon connection (q failed "couldn't connect to license daemon").
+;;         Only `(allow network*)` lets q license. => an open `hopen` exfil
+;;         channel remains.
+;;
+;;   COMBINED RESIDUAL RISK: a solution can still read kc.lic (gap c) AND send
+;;   it out (gap d). This profile blocks WRITE damage and SHELL-OUT but is NOT a
+;;   read/exfil boundary on this host. Proper fix: a dedicated, disposable host
+;;   with an OFFLINE host-bound license (k4.lic) so network can be denied
+;;   entirely — then (c) becomes moot. See judge/README.md.
+;; ==========================================================================
+
+(version 1)
+(deny default)
+
+;; surface what gets denied to the system log (comment out in production)
+(debug deny)
+
+;; --- process: deny fork (blocks q `system` shell-out); allow exec ONLY of the
+;;     q binary under @QHOME@ (sandbox-exec needs it to launch q) ---
+(deny process-fork)
+(deny process-exec*)
+(allow process-exec* (subpath "@QHOME@"))
+
+;; --- read: BROAD (q aborts otherwise — see gap (c)). Not a secrecy boundary. ---
+(allow file-read* file-read-metadata (subpath "/"))
+
+;; --- write: ONLY the per-run temp challenge dir (ENFORCED) ---
+(allow file-read* file-write* (subpath "@TMPDIR@"))
+(allow file-write-data (literal "/dev/null"))
+
+;; --- network: must be fully open for the cloud license — see gap (d).
+;;     On a dedicated host with an OFFLINE k4.lic, replace this whole block with
+;;     `(deny network*)` to get a real egress boundary. ---
+(allow network*)
+
+;; --- misc system services q needs to start ---
+(allow mach-lookup)
+(allow sysctl-read)
+(allow system-socket)
+(allow signal (target self))

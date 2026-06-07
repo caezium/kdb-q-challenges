@@ -88,14 +88,22 @@ class Handler(BaseHTTPRequestHandler):
             res = evaluate_q_challenge(ROOT / challenge, code)
         except Exception as e:  # noqa: BLE001
             return self._send(500, {"error": str(e)})
-        self._send(200, {
+        out = {
             "challenge": challenge,
             "passed": res["status"] == "pass",
             "status": res["status"],
             "score": res["score"],
             "total": res["total"],
             "sections": res.get("sections", {}),
-        })
+        }
+        # On failure, return a bounded error excerpt so best-of-N clients can
+        # feed the real q error back to the model. Truncated to avoid leaking
+        # the full harness / large outputs.
+        if res["status"] != "pass":
+            errs = res.get("errors") or []
+            excerpt = (errs[0] if errs else res.get("raw_output", "")) or ""
+            out["error"] = excerpt[-800:]
+        self._send(200, out)
 
     def log_message(self, *args):  # silence default logging
         pass

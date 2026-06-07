@@ -33,10 +33,17 @@ JUDGE_TOKEN=$(openssl rand -hex 16) JUDGE_PORT=8787 python3 judge/judge_server.p
 
 # 3. Render the task with that URL/token and push:
 JUDGE_URL=https://your-judge-host JUDGE_TOKEN=<same> ./kaggle-benchmark/render_and_push.sh
+#    Best-of-N (sequential retries, the judge's q error fed back each attempt):
+JUDGE_URL=... JUDGE_TOKEN=... ATTEMPTS=3 ./kaggle-benchmark/render_and_push.sh
 
 # 4. Run models:
 kaggle b t run kdb-q-code-gen -m gemini-3.1-pro-preview -m gpt-5.5-2026-04-23 --wait
 ```
+
+`ATTEMPTS` (default 1 = zero-shot) baked in at push time gives each model up to N
+tries per challenge; on a failure the judge returns a truncated `error` excerpt
+that the next prompt includes. Note: best-of-N feedback surfaces failing-test
+snippets to the model (inherent to iterative coding); zero-shot leaks nothing.
 
 Endpoints: `GET /health`, `GET /challenge/<name>` (README + stub),
 `POST /grade {challenge, response}` (Bearer `JUDGE_TOKEN`).
@@ -92,3 +99,24 @@ egress-allowlisted to the license daemon only, q under a real sandbox
 (`sandbox-exec` / container / VM), per-request resource + time limits. The
 prototype here trades that hardening for a one-session demo with frontier models
 on a known coding task (low, but nonzero, risk).
+
+### Sandbox draft: `sandbox-q.sb` + `run-q-sandboxed.sh`
+
+A `sandbox-exec` (SBPL) profile + wrapper (`ulimit` CPU/file-size bounds + hard
+timeout) for running q on untrusted code. **Not wired into `evaluate_q_challenge`
+by default** — it's a drafted, empirically-tested hardening layer. Findings on
+this machine (macOS 25.5, `kc.lic` over a VPN):
+
+| Goal | Status | Notes |
+|---|---|---|
+| **Write confinement** | ✅ enforced | Only the per-run temp dir is writable; writes elsewhere blocked (verified). |
+| **Shell-out blocked** | ✅ enforced | `(deny process-fork)` makes q `system "curl …"` fail; exec confined to `$QHOME`. |
+| **Read confinement** | ❌ not here | q SIGABRTs if `file-read` is narrowed below `(subpath "/")`; later `(deny … secret)` carve-outs don't override the broad allow. `kc.lic`/`~/.ssh` stay readable. |
+| **Network egress pinning** | ❌ not here | License daemon is a VPN-remapped dynamic IP (`198.18.0.46:80`); SBPL has no CIDR and its port filters didn't match it — only `(allow network*)` lets q license, leaving an `hopen` exfil channel. |
+
+**Residual risk:** read+exfil of `kc.lic` is still possible. The profile blocks
+write damage and shell-out only. To get a real read/exfil boundary, move to a
+dedicated host with an **offline `k4.lic`** so the network block (`(deny
+network*)`) can be applied — which also makes read confinement moot.
+
+Usage: `QHOME=~/q ./judge/run-q-sandboxed.sh <tests.q> <temp_dir> [timeout_s]`

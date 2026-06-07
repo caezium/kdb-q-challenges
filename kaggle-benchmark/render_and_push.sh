@@ -11,12 +11,15 @@ set -euo pipefail
 
 : "${JUDGE_URL:?set JUDGE_URL (e.g. your ngrok/cloudflared/loca.lt https URL)}"
 : "${JUDGE_TOKEN:?set JUDGE_TOKEN (matches the judge's JUDGE_TOKEN env)}"
+ATTEMPTS="${ATTEMPTS:-1}"   # best-of-N attempts per challenge (1 = zero-shot)
 
 here="$(cd "$(dirname "$0")" && pwd)"
 tmpl="$here/kdb_q_codegen.py"
 rendered="$here/kdb_q_codegen.rendered.py"   # gitignored
 
-sed -e "s#__JUDGE_URL__#${JUDGE_URL}#g" -e "s#__JUDGE_TOKEN__#${JUDGE_TOKEN}#g" "$tmpl" > "$rendered"
+sed -e "s#__JUDGE_URL__#${JUDGE_URL}#g" -e "s#__JUDGE_TOKEN__#${JUDGE_TOKEN}#g" \
+    -e "s#__ATTEMPTS__#${ATTEMPTS}#g" "$tmpl" > "$rendered"
+echo "Rendered with ATTEMPTS=${ATTEMPTS} (best-of-N retries with judge feedback)."
 
 echo "Sanity: judge health at $JUDGE_URL ..."
 curl -fsS --max-time 15 -H "bypass-tunnel-reminder: 1" "$JUDGE_URL/health" >/dev/null \
