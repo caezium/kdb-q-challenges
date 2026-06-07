@@ -50,6 +50,31 @@ Endpoints: `GET /health`, `GET /challenge/<name>` (README + stub),
 | **localtunnel** | `npx localtunnel --port 8787` (:443). Zero-setup but FLAKY — fine for one run, struggles under concurrent multi-model load; the task's retries help. |
 | **reverse-SSH to a box you own** | `ssh -R` + a forwarder on a Kaggle-allowed port. No third party, but needs an open inbound port. |
 
+## ⚠️ The public Kaggle leaderboard is NOT authoritative on a flaky/free pipe
+
+The reliable result is **re-grading the captured model solutions locally** with
+this evaluator (deterministic, fixed). The public Kaggle page is degraded by
+issues *upstream of the judge* that no amount of judge-side work fixes:
+
+- **Cost cap:** pricey models (e.g. claude-sonnet-4-6) `403` with
+  "max estimated cost ($0.96) exceeds ..." on the larger code-gen prompts —
+  every challenge fails for a non-capability reason.
+- **Model-proxy flakiness:** transient `503` "model not reachable" zeroes a run.
+- **Free-tunnel instability:** localtunnel flaps; concurrent multi-model runs
+  drop challenges to `JUDGE ERROR` despite the task's retries.
+- **Stochasticity:** each re-run samples fresh solutions, so a Kaggle run never
+  matches a specific captured run.
+
+**To make the public board authoritative:** host the judge on a stable box
+(ngrok / dedicated VM — not behind a VPN that blocks cloudflared), deploy the
+`_script_safe_q` multi-line fix, run one model at a time (or with generous
+spacing) to avoid hammering the tunnel, and skip / budget-raise the cost-capped
+models. Until then, cite the local re-grade.
+
+Corrected code-gen board (local re-grade, fixed evaluator, zero-shot best-of-runs):
+gemini-3-flash 4/7 · gemini-3.1-pro 4/7 · gpt-5.5 3/7 · claude-sonnet-4-6 3/7 ·
+qwen3-coder-480b 1/7. (`h2` universal; `h4`/`h5` unsolved by all.)
+
 ## ⚠️ Security — this executes untrusted model code
 
 `evaluate_q_challenge` runs model-generated q in a temp dir with a timeout, but
