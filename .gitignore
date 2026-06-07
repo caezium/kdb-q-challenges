@@ -1,4 +1,6 @@
 results/
+# Downloaded Kaggle Benchmarks run outputs (codegen_results/, egress_results/, pred_results/, …)
+*_results/
 *.pyc
 __pycache__/
 .env
@@ -16,7 +18,6 @@ kaggle-benchmark/*.run.json
 kaggle-benchmark/*.task.json
 kaggle-benchmark/example_task.py
 kaggle-benchmark/kaggle_benchmarks_reference.md
-kaggle-benchmark/*_results/
 
 # Rendered code-gen task (has the live judge URL + token baked in for push).
 # Commit the template (kdb_q_codegen.py) — never the rendered copy.
