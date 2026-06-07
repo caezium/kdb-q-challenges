@@ -48,6 +48,28 @@ ITEMS = [
     {'tag': 'h7', 'expr': '2 xprev 10 20 30 40 50', 'gold': '0N 0N 10 20 30'},
     {'tag': 'h7', 'expr': 'differ 1 1 2 2 3 1', 'gold': '101011b'},
     {'tag': 'h7', 'expr': 'deltas 1 3 6 10', 'gold': '1 2 3 4'},
+    {'tag': 'tc', 'expr': '9h$5', 'gold': '5f'},
+    {'tag': 'tc', 'expr': '"h"$3.7', 'gold': '4h'},
+    {'tag': 'tc', 'expr': '1e+2', 'gold': '100f'},
+    {'tag': 'tc', 'expr': '2026.01m - 2025.01m', 'gold': '12i'},
+    {'tag': 'tc', 'expr': '0x05+0x03', 'gold': '8i'},
+    {'tag': 'tc', 'expr': 'type "a"', 'gold': '-10h'},
+    {'tag': 'ni', 'expr': '0N 0W 0n 0w', 'gold': '0n 0w 0n 0w'},
+    {'tag': 'ni', 'expr': '0N+5', 'gold': '0N'},
+    {'tag': 'ni', 'expr': '0%0', 'gold': '0n'},
+    {'tag': 'ni', 'expr': '0N|5', 'gold': '5'},
+    {'tag': 'ni', 'expr': '1#0N', 'gold': ',0N'},
+    {'tag': 'rl', 'expr': '10%2+3', 'gold': '2f'},
+    {'tag': 'rl', 'expr': '1+2*3-1', 'gold': '5'},
+    {'tag': 'ad', 'expr': "(-':)1 2 4 7", 'gold': '1 1 2 3'},
+    {'tag': 'ad', 'expr': '1 2 3+\\:10 20 30', 'gold': '(11 21 31;12 22 32;13 23 33)'},
+    {'tag': 'ad', 'expr': "1 2 3,'10 20 30", 'gold': '(1 10;2 20;3 30)'},
+    {'tag': 'st', 'expr': 'flip `a`b!(1 2;3 4)', 'gold': '+`a`b!(1 2;3 4)'},
+    {'tag': 'st', 'expr': 'first ([]a:1 2;b:3 4)', 'gold': '`a`b!1 3'},
+    {'tag': 'st', 'expr': '(`a`b!1 2),(enlist `c)!enlist 3', 'gold': '`a`b`c!1 2 3'},
+    {'tag': 'st', 'expr': '(til 3)!`a`b`c', 'gold': '0 1 2!`a`b`c'},
+    {'tag': 'cs', 'expr': '"/" vs "a/b/c"', 'gold': '(,"a";,"b";,"c")'},
+    {'tag': 'cs', 'expr': 'distinct "mississippi"', 'gold': '"misp"'},
 ]
 
 PROMPT_TEMPLATE = """You are a kdb+/q expert. Evaluate the q expression EXACTLY as the \
@@ -122,7 +144,7 @@ def grade(predict):
 @kbench.task(
     name="kdb-q-output-prediction",
     description=(
-        "Predict the exact output of 25 tricky kdb+/q expressions "
+        "Predict the exact output of 47 tricky kdb+/q expressions "
         "(right-to-left parsing, adverbs, temporal arithmetic, functional "
         "select, grouping, sliding windows). Score = fraction matching q."
     ),
