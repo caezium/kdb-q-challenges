@@ -64,12 +64,6 @@ def _req(path, payload=None, tries=4):
 
 
 # %%
-@kbench.task(
-    name="kdb-q-code-gen",
-    description=("Write q solutions to 7 hard kdb+/q challenges; a remote "
-                "licensed-q judge runs the real anti-cheat tests. Score = "
-                "fraction of challenges whose full suite passes."),
-)
 def _solve_challenge(llm, ch):
     """Best-of-N: up to ATTEMPTS tries, feeding the judge's q error back each
     time. Returns (ok, detail). Stops early on the first full pass."""
@@ -99,6 +93,12 @@ def _solve_challenge(llm, ch):
     return False, detail
 
 
+@kbench.task(
+    name="kdb-q-code-gen",
+    description=("Write q solutions to 7 hard kdb+/q challenges; a remote "
+                "licensed-q judge runs the real anti-cheat tests. Score = "
+                "fraction of challenges whose full suite passes."),
+)
 def kdb_q_code_gen(llm) -> float:
     passed = 0
     for ch in CHALLENGES:
