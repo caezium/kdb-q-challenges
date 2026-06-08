@@ -1,6 +1,42 @@
 # kdb-q-challenges Leaderboard
 
-## ⭐ Public Remote-Judge Board (authoritative, executable code-gen)
+## ⭐ Public Remote-Judge Board — v8 (24/7 Mac Studio, authoritative)
+
+Same executable, remote-judged setup as below, but now served from an
+**always-on Mac Studio**: real **licensed kdb+ 4.1** runs the actual `tests.q`
+anti-cheat suites behind `judge/judge_server.py`, exposed to Kaggle Benchmarks over
+a stable **Tailscale Funnel**. The judge runs under a launchd KeepAlive agent, so it
+survives crashes/reboots. **Score = fraction of challenges whose FULL `tests.q`
+suite passes.**
+
+**Run:** task `kdb-q-code-gen` v8 · zero-shot (best-of-1) · real judge on
+`henrys-mac-studio` · 2026-06-08. Each cell is the real judge verdict on that
+model's generated q (`✓` = full suite passed).
+
+| Model | Provider | j1 | h2 | h3 | h4 | h5 | h6 | h7 | Score |
+|-------|----------|----|----|----|----|----|----|----|-------|
+| **gemini-3-flash-preview**† | Google | ✓ | ✗ | ✓ | ✗ | ✗ | ✓ | ✓ | **4/7 (57%)** |
+| **gemini-3.1-pro-preview** | Google | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ | **4/7 (57%)** |
+| **gpt-5.5-2026-04-23** | OpenAI | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ | **4/7 (57%)** |
+| grok-4.20-0309-reasoning | xAI | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 2/7 (29%) |
+| glm-5 | Zhipu | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | 2/7 (29%) |
+| qwen3-coder-480b-a35b-instruct | Alibaba | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 1/7 (14%) |
+
+† The gemini-3-flash row is the task's push-validation run (same v8 judge), included for coverage.
+
+**Unsolved by ALL 6 models: `h4-functional-select`, `h5-tree-unfold`** — the true hard floor.
+
+**Findings vs the v6 board.** `h3-temporal-bridge` — unsolved by everyone on v6 — was
+**cracked this run** by gemini-3-flash *and* glm-5. Conversely `h2-custom-adverb`,
+"universal" on v6, was **missed** by those same two models here. This is exactly the
+expected best-of-1 N=1 stochasticity: per-challenge cells shift run-to-run, so read the
+**floor (h4/h5)** and the **tier split** (frontier 4/7 → mid 2/7 → 1/7) as the durable
+signal, not individual cells. h4 (functional-select parse tree) and h5 (stackless tree
+unfold) remain the strongest discriminators — no model clears them zero-shot.
+
+---
+
+## Remote-Judge Board — v6 (ngrok from MacBook, 2026-06-07, historical)
 
 This is the **executable, remote-judged** board: each model writes q to the 7
 challenges inside Kaggle Benchmarks, and a real licensed-kdb+ judge

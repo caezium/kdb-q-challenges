@@ -1,33 +1,48 @@
 {
   "task": "kdb-q-code-gen",
-  "task_version": 6,
-  "strategy": "zero-shot",
-  "attempts": 1,
-  "judge": "real licensed-kdb+ judge_server.py running tests.q suites",
-  "tunnel": "ngrok",
-  "date": "2026-06-07",
-  "note": "Score=fraction of challenges whose FULL anti-cheat suite passes. N=1 sample, ~\u00b11 challenge run-to-run variance.",
-  "models": {
+  "version": 8,
+  "host": "mac-studio (24/7, Tailscale Funnel)",
+  "judge": "real licensed kdb+ 4.1 over remote judge",
+  "mode": "zero-shot (best-of-1)",
+  "challenges": [
+    "j1-lazy-scan",
+    "h2-custom-adverb",
+    "h3-temporal-bridge",
+    "h4-functional-select",
+    "h5-tree-unfold",
+    "h6-vector-partition",
+    "h7-adverb-algebra"
+  ],
+  "results": {
     "gemini-3-flash-preview": {
-      "provider": "Google",
-      "passed": 2,
+      "score": 4,
       "total": 7,
-      "score": 0.286,
+      "per_challenge": {
+        "j1-lazy-scan": true,
+        "h2-custom-adverb": false,
+        "h3-temporal-bridge": true,
+        "h4-functional-select": false,
+        "h5-tree-unfold": false,
+        "h6-vector-partition": true,
+        "h7-adverb-algebra": true
+      }
+    },
+    "gemini-3.1-pro-preview": {
+      "score": 4,
+      "total": 7,
       "per_challenge": {
         "j1-lazy-scan": true,
         "h2-custom-adverb": true,
         "h3-temporal-bridge": false,
         "h4-functional-select": false,
         "h5-tree-unfold": false,
-        "h6-vector-partition": false,
-        "h7-adverb-algebra": false
+        "h6-vector-partition": true,
+        "h7-adverb-algebra": true
       }
     },
-    "gemini-3.1-pro-preview": {
-      "provider": "Google",
-      "passed": 4,
+    "gpt-5.5-2026-04-23": {
+      "score": 4,
       "total": 7,
-      "score": 0.571,
       "per_challenge": {
         "j1-lazy-scan": true,
         "h2-custom-adverb": true,
@@ -39,40 +54,21 @@
       }
     },
     "glm-5": {
-      "provider": "Zhipu",
-      "passed": 1,
+      "score": 2,
       "total": 7,
-      "score": 0.143,
       "per_challenge": {
         "j1-lazy-scan": true,
         "h2-custom-adverb": false,
-        "h3-temporal-bridge": false,
+        "h3-temporal-bridge": true,
         "h4-functional-select": false,
         "h5-tree-unfold": false,
         "h6-vector-partition": false,
         "h7-adverb-algebra": false
       }
     },
-    "gpt-5.5-2026-04-23": {
-      "provider": "OpenAI",
-      "passed": 4,
-      "total": 7,
-      "score": 0.571,
-      "per_challenge": {
-        "j1-lazy-scan": true,
-        "h2-custom-adverb": true,
-        "h3-temporal-bridge": false,
-        "h4-functional-select": false,
-        "h5-tree-unfold": false,
-        "h6-vector-partition": true,
-        "h7-adverb-algebra": true
-      }
-    },
     "grok-4.20-0309-reasoning": {
-      "provider": "xAI",
-      "passed": 2,
+      "score": 2,
       "total": 7,
-      "score": 0.286,
       "per_challenge": {
         "j1-lazy-scan": true,
         "h2-custom-adverb": true,
@@ -84,10 +80,8 @@
       }
     },
     "qwen3-coder-480b-a35b-instruct": {
-      "provider": "Alibaba",
-      "passed": 1,
+      "score": 1,
       "total": 7,
-      "score": 0.143,
       "per_challenge": {
         "j1-lazy-scan": false,
         "h2-custom-adverb": true,
@@ -99,13 +93,8 @@
       }
     }
   },
-  "per_challenge_solve_rate": {
-    "j1-lazy-scan": 5,
-    "h2-custom-adverb": 5,
-    "h3-temporal-bridge": 0,
-    "h4-functional-select": 0,
-    "h5-tree-unfold": 0,
-    "h6-vector-partition": 2,
-    "h7-adverb-algebra": 2
-  }
+  "unsolved_by_all": [
+    "h4-functional-select",
+    "h5-tree-unfold"
+  ]
 }
