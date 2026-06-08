@@ -1,5 +1,53 @@
 # kdb-q-challenges Leaderboard
 
+## ⭐ Public Remote-Judge Board (authoritative, executable code-gen)
+
+This is the **executable, remote-judged** board: each model writes q to the 7
+challenges inside Kaggle Benchmarks, and a real licensed-kdb+ judge
+(`judge/judge_server.py`) runs the *actual* `tests.q` anti-cheat suites and
+returns pass/fail. The Kaggle sandbox has no licensed q, so grading happens
+out-of-band over HTTP. **Score = fraction of challenges whose FULL suite passes.**
+
+**Run:** Kaggle Benchmarks task `kdb-q-code-gen` v6 · zero-shot (best-of-1) ·
+judge reached from Kaggle over an `ngrok` tunnel · 2026-06-07. Each cell is the
+real judge verdict on that model's generated q; `✓` = full suite passed.
+
+| Model | Provider | j1 | h2 | h3 | h4 | h5 | h6 | h7 | Score |
+|-------|----------|----|----|----|----|----|----|----|-------|
+| **gemini-3.1-pro-preview** | Google | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ | **4/7 (57%)** |
+| **gpt-5.5-2026-04-23** | OpenAI | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ | ✓ | **4/7 (57%)** |
+| gemini-3-flash-preview | Google | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 2/7 (29%) |
+| grok-4.20-0309-reasoning | xAI | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 2/7 (29%) |
+| glm-5 | Zhipu | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 1/7 (14%) |
+| qwen3-coder-480b-a35b-instruct | Alibaba | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 1/7 (14%) |
+
+**Per-challenge solve rate (of 6 models):**
+
+| Challenge | Solved | Note |
+|-----------|--------|------|
+| j1-lazy-scan | 5/6 | Tractable for most |
+| h2-custom-adverb | 5/6 | Functional composition transfers |
+| h6-vector-partition | 2/6 | Only the two frontier models |
+| h7-adverb-algebra | 2/6 | Only the two frontier models |
+| **h3-temporal-bridge** | **0/6** | **Unsolved by all** (`aj` + staleness) |
+| **h4-functional-select** | **0/6** | **Unsolved by all** (functional-select parse tree) |
+| **h5-tree-unfold** | **0/6** | **Unsolved by all** (stackless BFS unfold) |
+
+**Findings.** A clean tri-tier split: two frontier models (Gemini 3.1 Pro, GPT-5.5)
+clear 4/7; mid-tier (Gemini Flash, Grok reasoning) clear the two "warm-up"
+challenges only; glm-5/qwen clear just one. **h3, h4, h5 form a hard floor no
+model clears zero-shot** — the strongest discriminators in the suite. This board
+*is* reproducible: re-run any model with the judge live and it re-grades against
+the same `tests.q`. Best-of-1 zero-shot has ~±1-challenge run-to-run variance
+(model stochasticity, N=1), so treat 1-point gaps as noise.
+
+> [!NOTE]
+> The OpenRouter board below is **older, pre-hardening, and not reproducible**
+> (it predates the multi-line `\l` evaluator fix and uses a now-removed local
+> runner). Kept for history; prefer the remote-judge board above.
+
+---
+
 > [!WARNING]
 > **These numbers are not reproducible from this repository and should be treated
 > as indicative only.** The source `results/*.json` files are gitignored, so the
