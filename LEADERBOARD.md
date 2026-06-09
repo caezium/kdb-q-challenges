@@ -34,6 +34,24 @@ expected best-of-1 N=1 stochasticity: per-challenge cells shift run-to-run, so r
 signal, not individual cells. h4 (functional-select parse tree) and h5 (stackless tree
 unfold) remain the strongest discriminators — no model clears them zero-shot.
 
+### Best-of-3 (real-error feedback) — the floor falls
+
+Re-run with **ATTEMPTS=3** on task v9: each failed challenge is retried up to 3×, feeding
+the judge's *actual q error* back to the model each time. Run on the same 24/7 Studio judge.
+
+| Model | j1 | h2 | h3 | h4 | h5 | h6 | h7 | best-of-3 | Δ vs 0-shot |
+|-------|----|----|----|----|----|----|----|-----------|-------------|
+| **gemini-3.1-pro-preview** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **7/7 (100%)** | **+3** |
+| gpt-5.5-2026-04-23 | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 6/7 (86%) | +2 |
+| gemini-3-flash-preview | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 6/7 (86%) | +2 |
+
+**The zero-shot floor breaks under iteration.** `h5-tree-unfold` and `h3-temporal-bridge`
+— unsolved by all zero-shot — are cracked by **all three** models with error feedback.
+**`h4-functional-select` is the single hardest challenge: only gemini-3.1-pro solves it,
+even with 3 attempts**, which is why it alone reaches a perfect 7/7. Real judge-error
+feedback lifts frontier models from 4/7 to 6–7/7 — the suite's discriminating power lives
+in *iteration*, not just first-shot, and h4 is the lone challenge that resists even that.
+
 ---
 
 ## Remote-Judge Board — v6 (ngrok from MacBook, 2026-06-07, historical)
