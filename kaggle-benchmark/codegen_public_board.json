@@ -2,7 +2,7 @@
   "task": "kdb-q-code-gen",
   "host": "mac-studio (24/7, launchd + Tailscale Funnel)",
   "judge": "real licensed kdb+ 4.1 running tests.q over remote HTTP judge",
-  "date": "2026-06-08",
+  "date": "2026-06-11",
   "challenges": [
     "j1-lazy-scan",
     "h2-custom-adverb",
@@ -42,19 +42,6 @@
           "h7-adverb-algebra": true
         }
       },
-      "gpt-5.5-2026-04-23": {
-        "score": 4,
-        "total": 7,
-        "per_challenge": {
-          "j1-lazy-scan": true,
-          "h2-custom-adverb": true,
-          "h3-temporal-bridge": false,
-          "h4-functional-select": false,
-          "h5-tree-unfold": false,
-          "h6-vector-partition": true,
-          "h7-adverb-algebra": true
-        }
-      },
       "glm-5": {
         "score": 2,
         "total": 7,
@@ -81,6 +68,19 @@
           "h7-adverb-algebra": false
         }
       },
+      "gpt-5.5-2026-04-23": {
+        "score": 4,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": true,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": false,
+          "h4-functional-select": false,
+          "h5-tree-unfold": false,
+          "h6-vector-partition": true,
+          "h7-adverb-algebra": true
+        }
+      },
       "qwen3-coder-480b-a35b-instruct": {
         "score": 1,
         "total": 7,
@@ -101,8 +101,12 @@
     ]
   },
   "best_of_3": {
-    "task_version": 9,
+    "task_versions": [
+      9,
+      11
+    ],
     "mode": "3 attempts, judge q-error fed back",
+    "models": 9,
     "results": {
       "gemini-3.1-pro-preview": {
         "score": 7,
@@ -112,6 +116,19 @@
           "h2-custom-adverb": true,
           "h3-temporal-bridge": true,
           "h4-functional-select": true,
+          "h5-tree-unfold": true,
+          "h6-vector-partition": true,
+          "h7-adverb-algebra": true
+        }
+      },
+      "gpt-5.5-2026-04-23": {
+        "score": 6,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": true,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": true,
+          "h4-functional-select": false,
           "h5-tree-unfold": true,
           "h6-vector-partition": true,
           "h7-adverb-algebra": true
@@ -130,8 +147,8 @@
           "h7-adverb-algebra": true
         }
       },
-      "gpt-5.5-2026-04-23": {
-        "score": 6,
+      "claude-opus-4-8-default": {
+        "score": 4,
         "total": 7,
         "per_challenge": {
           "j1-lazy-scan": true,
@@ -139,12 +156,77 @@
           "h3-temporal-bridge": true,
           "h4-functional-select": false,
           "h5-tree-unfold": true,
+          "h6-vector-partition": false,
+          "h7-adverb-algebra": false
+        }
+      },
+      "grok-4.20-0309-reasoning": {
+        "score": 4,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": true,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": false,
+          "h4-functional-select": false,
+          "h5-tree-unfold": true,
           "h6-vector-partition": true,
+          "h7-adverb-algebra": false
+        }
+      },
+      "claude-sonnet-4-6-default": {
+        "score": 4,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": true,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": false,
+          "h4-functional-select": true,
+          "h5-tree-unfold": false,
+          "h6-vector-partition": true,
+          "h7-adverb-algebra": false
+        }
+      },
+      "glm-5": {
+        "score": 3,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": true,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": false,
+          "h4-functional-select": false,
+          "h5-tree-unfold": false,
+          "h6-vector-partition": false,
           "h7-adverb-algebra": true
+        }
+      },
+      "claude-haiku-4-5-20251001": {
+        "score": 2,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": true,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": false,
+          "h4-functional-select": false,
+          "h5-tree-unfold": false,
+          "h6-vector-partition": false,
+          "h7-adverb-algebra": false
+        }
+      },
+      "qwen3-coder-480b-a35b-instruct": {
+        "score": 1,
+        "total": 7,
+        "per_challenge": {
+          "j1-lazy-scan": false,
+          "h2-custom-adverb": true,
+          "h3-temporal-bridge": false,
+          "h4-functional-select": false,
+          "h5-tree-unfold": false,
+          "h6-vector-partition": false,
+          "h7-adverb-algebra": false
         }
       }
     },
     "unsolved_by_all": [],
-    "note": "h5 & h3 cracked by all 3 frontier models with retries; h4-functional-select solved only by gemini-3.1-pro (-> lone 7/7)"
+    "note": "9 models incl. Claude tier. Only gemini-3.1-pro perfect 7/7. h4 cracked only by gemini-3.1-pro & claude-sonnet-4-6. Claude mid-pack (opus/sonnet 4/7, haiku 2/7); qwen no gain from retries. No cost-cap issues."
   }
 }

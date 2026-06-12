@@ -36,21 +36,31 @@ unfold) remain the strongest discriminators — no model clears them zero-shot.
 
 ### Best-of-3 (real-error feedback) — the floor falls
 
-Re-run with **ATTEMPTS=3** on task v9: each failed challenge is retried up to 3×, feeding
-the judge's *actual q error* back to the model each time. Run on the same 24/7 Studio judge.
+Re-run with **ATTEMPTS=3**: each failed challenge is retried up to 3×, feeding the judge's
+*actual q error* back to the model each time. Same 24/7 Studio judge; gemini-3.1-pro &
+gpt-5.5 on task v9, the rest on the identical re-push v11. **9 models.**
 
-| Model | j1 | h2 | h3 | h4 | h5 | h6 | h7 | best-of-3 | Δ vs 0-shot |
-|-------|----|----|----|----|----|----|----|-----------|-------------|
-| **gemini-3.1-pro-preview** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **7/7 (100%)** | **+3** |
-| gpt-5.5-2026-04-23 | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 6/7 (86%) | +2 |
-| gemini-3-flash-preview | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 6/7 (86%) | +2 |
+| Model | Provider | j1 | h2 | h3 | h4 | h5 | h6 | h7 | best-of-3 |
+|-------|----------|----|----|----|----|----|----|----|-----------|
+| **gemini-3.1-pro-preview** | Google | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **7/7 (100%)** |
+| gpt-5.5-2026-04-23 | OpenAI | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 6/7 (86%) |
+| gemini-3-flash-preview | Google | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | 6/7 (86%) |
+| claude-opus-4-8-default | Anthropic | ✓ | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ | 4/7 (57%) |
+| grok-4.20-0309-reasoning | xAI | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | 4/7 (57%) |
+| claude-sonnet-4-6-default | Anthropic | ✓ | ✓ | ✗ | ✓ | ✗ | ✓ | ✗ | 4/7 (57%) |
+| glm-5 | Zhipu | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | 3/7 (43%) |
+| claude-haiku-4-5-20251001 | Anthropic | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 2/7 (29%) |
+| qwen3-coder-480b-a35b-instruct | Alibaba | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | 1/7 (14%) |
 
-**The zero-shot floor breaks under iteration.** `h5-tree-unfold` and `h3-temporal-bridge`
-— unsolved by all zero-shot — are cracked by **all three** models with error feedback.
-**`h4-functional-select` is the single hardest challenge: only gemini-3.1-pro solves it,
-even with 3 attempts**, which is why it alone reaches a perfect 7/7. Real judge-error
-feedback lifts frontier models from 4/7 to 6–7/7 — the suite's discriminating power lives
-in *iteration*, not just first-shot, and h4 is the lone challenge that resists even that.
+**The zero-shot floor breaks under iteration — but only for the leaders.** With error
+feedback **every challenge is solved by at least one model** (nothing unsolved-by-all):
+`h3` and `h5` (unsolved zero-shot) fall to several. **`h4-functional-select` stays the
+apex — cracked only by gemini-3.1-pro and, surprisingly, claude-sonnet-4-6** (the lone
+non-Gemini to get it, trading away h3/h5 to do so). Frontier Gemini/GPT lead at 6–7/7;
+**the Claude tier lands mid-pack on this esoteric q dialect** — Opus 4.8 and Sonnet 4.6 at
+4/7 (below gemini-3-flash), Haiku 4.5 at 2/7 — and **qwen doesn't improve at all with
+retries** (1/7 → 1/7). No cost-cap issues on any model. The suite's discriminating power
+lives in *iteration*, and h4 is its hardest test.
 
 ---
 
